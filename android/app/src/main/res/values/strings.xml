@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">服装采购生产管理系统</string>
+    <string name="title_activity_main">服装采购生产管理系统</string>
+    <string name="package_name">com.zhiyi.garmentems.mobile</string>
+    <string name="custom_url_scheme">com.zhiyi.garmentems.mobile</string>
+</resources>

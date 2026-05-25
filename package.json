@@ -1,0 +1,75 @@
+{
+  "name": "garment-ems-app",
+  "version": "1.0.57",
+  "private": true,
+  "author": "Garment EMS Team",
+  "description": "服装采购生产管理系统",
+  "main": "electron/main.cjs",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "vite",
+    "electron:dev": "vite",
+    "electron:run": "electron .",
+    "rebuild:native": "node node_modules/@electron/rebuild/lib/cli.js -f -w better-sqlite3",
+    "postinstall": "npm run rebuild:native",
+    "build": "vite build",
+    "build:electron": "vite build && electron-builder",
+    "build:release": "vite build && electron-builder --win nsis portable",
+    "build:patch": "npm run build:electron && node scripts/build-patch.cjs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.3.1",
+    "@capacitor/cli": "^7.6.2",
+    "@capacitor/core": "^8.3.1",
+    "ant-design-vue": "^4.2.5",
+    "better-sqlite3": "^11.10.0",
+    "pinia": "^2.2.2",
+    "vue": "^3.5.0",
+    "vue-router": "^4.4.3"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.2",
+    "@vitejs/plugin-vue": "^5.1.4",
+    "electron": "^31.2.0",
+    "electron-builder": "^24.13.3",
+    "ora": "^9.3.0",
+    "vite": "^5.4.21"
+  },
+  "build": {
+    "appId": "com.zhiyi.ems",
+    "productName": "服装采购生产管理系统",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.cjs"
+    },
+    "win": {
+      "icon": "icon.ico",
+      "artifactName": "Garment-EMS-Setup-${version}.${ext}",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico",
+      "installerHeaderIcon": "icon.ico",
+      "shortcutName": "Garment EMS",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "portable": {
+      "artifactName": "Garment-EMS-Portable-${version}.${ext}"
+    }
+  }
+}

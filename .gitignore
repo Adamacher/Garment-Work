@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+release/
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+
+# Local business data and database backups
+DATABASE/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+app.db
+
+# Logs and local runtime files
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+garment_ems_launcher_*.txt
+garment_ems_launcher_*.log
+
+# Environment and local config
+.env
+.env.*
+*.local
+
+# Temporary inspection scripts
+tmp-*.js
+tmp-*.cjs
+__inspect_*.js
+*.bak
+*.bak-*
+*.backup
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
