@@ -1025,9 +1025,26 @@ function appendInventoryMapValue(map, key, amount) {
   map.set(key, Number(map.get(key) || 0) + Number(amount || 0))
 }
 
+function splitInventoryFactoryNames(value = '') {
+  return String(value || '')
+    .split(/[、,，/]/)
+    .map((item) => normalizeInventoryText(item))
+    .filter(Boolean)
+}
+
+function mergeInventoryFallbackMap(targetMap, fallbackMap) {
+  fallbackMap.forEach((amount, key) => {
+    if (!targetMap.has(key) || Math.abs(Number(targetMap.get(key) || 0)) <= 0.000001) {
+      targetMap.set(key, Number(amount || 0))
+    }
+  })
+}
+
 function buildProductionInventoryMaps(summary = {}) {
   const nextWarehouseMap = new Map()
   const nextFactoryMap = new Map()
+  const fallbackWarehouseMap = new Map()
+  const fallbackFactoryMap = new Map()
 
   ;(summary.batches || []).forEach((batch) => {
     const materialId = Number(batch.material_id || 0)
@@ -1059,6 +1076,39 @@ function buildProductionInventoryMaps(summary = {}) {
       ])].forEach((key) => appendInventoryMapValue(nextFactoryMap, key, remainingQty))
     })
   })
+
+  ;(summary.materials || []).forEach((item) => {
+    const materialId = Number(item.material_id || item.id || 0)
+    if (!materialId) return
+    const color = normalizeInventoryText(item.color, '未分色')
+    const size = normalizeInventoryText(item.size)
+    const warehouseQty = Number(item.warehouse_available_after_prealloc_qty ?? item.warehouse_remaining_qty ?? 0)
+    const factoryQty = Number(item.factory_available_after_prealloc_qty ?? item.factory_remaining_qty ?? 0)
+    const factoryNames = splitInventoryFactoryNames(item.factory_name)
+
+    ;[...new Set([
+      buildInventoryLookupKey(materialId, color, size),
+      buildInventoryLookupKey(materialId, color, ''),
+      buildInventoryLookupKey(materialId, '', size),
+      buildInventoryLookupKey(materialId, '', '')
+    ])].forEach((key) => appendInventoryMapValue(fallbackWarehouseMap, key, warehouseQty))
+
+    ;[...new Set([
+      buildInventoryLookupKey(materialId, color, size, ''),
+      buildInventoryLookupKey(materialId, color, '', ''),
+      buildInventoryLookupKey(materialId, '', size, ''),
+      buildInventoryLookupKey(materialId, '', '', ''),
+      ...factoryNames.flatMap((factoryName) => [
+        buildInventoryLookupKey(materialId, color, size, factoryName),
+        buildInventoryLookupKey(materialId, color, '', factoryName),
+        buildInventoryLookupKey(materialId, '', size, factoryName),
+        buildInventoryLookupKey(materialId, '', '', factoryName)
+      ])
+    ])].forEach((key) => appendInventoryMapValue(fallbackFactoryMap, key, factoryQty))
+  })
+
+  mergeInventoryFallbackMap(nextWarehouseMap, fallbackWarehouseMap)
+  mergeInventoryFallbackMap(nextFactoryMap, fallbackFactoryMap)
 
   inventorySummary.value = summary || { materials: [], batches: [], inTransit: [], inTransitBatches: [] }
   inventoryWarehouseMap.value = nextWarehouseMap
@@ -1683,7 +1733,15 @@ function getRowInventoryBalance(row, mode = 'warehouse', size = '', factoryName 
   const normalizedSize = normalizeInventoryText(size)
   if (mode === 'factory') {
     const normalizedFactoryName = normalizeInventoryText(factoryName)
-    if (!normalizedFactoryName) return 0
+    if (!normalizedFactoryName) {
+      return Number(
+        inventoryFactoryMap.value.get(buildInventoryLookupKey(materialId, color, normalizedSize, ''))
+        || inventoryFactoryMap.value.get(buildInventoryLookupKey(materialId, '', normalizedSize, ''))
+        || inventoryFactoryMap.value.get(buildInventoryLookupKey(materialId, color, '', ''))
+        || inventoryFactoryMap.value.get(buildInventoryLookupKey(materialId, '', '', ''))
+        || 0
+      )
+    }
     return Number(
       inventoryFactoryMap.value.get(buildInventoryLookupKey(materialId, color, normalizedSize, normalizedFactoryName))
       || inventoryFactoryMap.value.get(buildInventoryLookupKey(materialId, '', normalizedSize, normalizedFactoryName))
