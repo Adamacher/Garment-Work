@@ -707,9 +707,11 @@ function stringifyProductionSizeRows(rows = []) {
 
 function createBomRow(data = {}) {
   const material = data.material_id ? getMaterial(Number(data.material_id)) : null
+  const materialId = data.material_id ? Number(data.material_id) : null
   return {
     localKey: `${Date.now()}-${Math.random()}`,
-    material_id: data.material_id || null,
+    material_id: materialId,
+    _original_material_id: materialId,
     material_role: data.material_role || '辅料',
     supply_mode: data.supply_mode || 'our_supply',
     usage_mode: data.usage_mode || (data.material_role === 'A料' ? 'full_cut' : 'by_usage'),
@@ -729,12 +731,17 @@ function handleBomMaterialChange(row) {
   if (!row) return
   const material = getMaterial(row.material_id)
   if (!material) return
-  const materialUnit = normalizeUnit(material.unit || '米')
-  if (!row.usage_unit || row.usage_unit === '米') {
-    row.usage_unit = materialUnit
+  const currentMaterialId = Number(row.material_id || 0) || null
+  const originalMaterialId = Number(row._original_material_id || 0) || null
+  const hasExplicitUsageUnit = Boolean(String(row.usage_unit || '').trim())
+  if (!hasExplicitUsageUnit) {
+    row.usage_unit = normalizeUnit(material.unit || '米')
   }
   if (!row.material_color) {
     row.material_color = getColorOptions(row.material_id)[0]?.value || ''
+  }
+  if (currentMaterialId !== originalMaterialId) {
+    row._original_material_id = currentMaterialId
   }
 }
 
