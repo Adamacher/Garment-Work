@@ -124,7 +124,7 @@
           <div class="erp-mobile-card__footer">
             <a-button type="primary" size="small" @click="openDispatch(row)">出库到工厂</a-button>
             <a-button v-if="Number(row.factory_allocated_qty || 0) > 0" size="small" @click="openRecover(row)">回收入仓</a-button>
-            <a-button size="small" danger @click="confirmClearResidue(row)">清空残余</a-button>
+            <a-button size="small" danger @click="openVerifyStock(row)">核实库存</a-button>
           </div>
         </div>
       </div>
@@ -212,7 +212,7 @@
                 <div class="table-actions-inline">
                   <a-button type="primary" size="small" @click="openDispatch(row)">出库到工厂</a-button>
                   <a-button v-if="Number(row.factory_allocated_qty || 0) > 0" size="small" @click="openRecover(row)">回收入仓</a-button>
-                  <a-button size="small" danger @click="confirmClearResidue(row)">清空残余</a-button>
+                  <a-button size="small" danger @click="openVerifyStock(row)">核实库存</a-button>
                 </div>
               </td>
             </tr>
@@ -398,12 +398,48 @@
         <a-button v-if="dispatchMode !== 'recover'" @click="addDispatchAllocation">新增去向</a-button>
       </div>
     </a-modal>
+
+    <a-modal
+      v-model:open="verifyVisible"
+      title="核实库存"
+      width="620px"
+      ok-text="确认核实"
+      cancel-text="取消"
+      :confirm-loading="verifySaving"
+      @ok="saveInventoryVerification"
+    >
+      <div v-if="verifyBatch" class="dispatch-panel">
+        <div class="table-stack table-stack--tight" style="margin-bottom: 12px;">
+          <div class="table-primary">{{ verifyBatch.batch_no || '-' }} / {{ verifyBatch.material_code || '-' }}</div>
+          <div class="table-secondary">
+            扣除已生产成衣后的当前剩余：{{ formatQtyWithUnit(getVerifyMaxQty(), verifyBatch.unit || verifyBatch.actual_input_unit || verifyBatch.purchase_input_unit) }}
+          </div>
+        </div>
+        <a-form layout="vertical">
+          <a-form-item label="核实后的实际剩余数量">
+            <a-input-number
+              v-model:value="verifyQty"
+              style="width: 100%"
+              :min="0"
+              :max="getVerifyMaxQty()"
+              :step="0.0001"
+            />
+          </a-form-item>
+          <a-form-item label="备注">
+            <a-input v-model:value="verifyRemark" placeholder="例如：盘点核实、残余报损、实物短缺" />
+          </a-form-item>
+        </a-form>
+        <div class="formula-box">
+          核实数量不能大于当前剩余；确认后会按该批次更新库存，并记录到库存流水。
+        </div>
+      </div>
+    </a-modal>
   </section>
 </template>
 
 <script setup>
 import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue'
-import { message, Modal } from 'ant-design-vue'
+import { message } from 'ant-design-vue'
 import HoverImageThumb from '../components/HoverImageThumb.vue'
 import MobileFilterPanel from '../components/MobileFilterPanel.vue'
 import PageSummaryStrip from '../components/PageSummaryStrip.vue'
@@ -564,6 +600,11 @@ const factoryDraftValue = ref(undefined)
 const factoryDraftText = ref('')
 const warehouseDraftValue = ref(undefined)
 const warehouseDraftText = ref('')
+const verifyVisible = ref(false)
+const verifySaving = ref(false)
+const verifyBatch = ref(null)
+const verifyQty = ref(0)
+const verifyRemark = ref('')
 
 const filterFieldOptions = [
   { label: '综合搜索', value: 'keyword' },
@@ -747,6 +788,17 @@ function getWarehouseQty() {
   return Math.max(total - getAllocatedQty(), 0)
 }
 
+function getVerifyMaxQty() {
+  return Number(verifyBatch.value?.remaining_qty || 0)
+}
+
+function openVerifyStock(record) {
+  verifyBatch.value = { ...record }
+  verifyQty.value = Number(record?.remaining_qty || 0)
+  verifyRemark.value = ''
+  verifyVisible.value = true
+}
+
 async function saveFactoryOption() {
   const value = String(factoryDraftText.value || factoryDraftValue.value || '').trim()
   if (!value) {
@@ -894,29 +946,34 @@ async function saveDispatch() {
   }
 }
 
-function confirmClearResidue(row) {
-  Modal.confirm({
-    title: '清空残余',
-    content: '确认清空这条批次在台账中的残余显示吗？',
-    okText: '确定',
-    cancelText: '取消',
-    async onOk() {
-      try {
-        await api.db.clearInventoryResidue({
-          scope: 'batch',
-          batch_id: Number(row.id || 0),
-          material_id: row.material_id,
-          color: row.color,
-          size: row.size,
-          supplier: row.supplier_name || row.supplier || ''
-        })
-        message.success('已清空残余显示')
-        await loadData()
-      } catch (error) {
-        message.error(error?.message || '清空残余失败')
-      }
-    }
-  })
+async function saveInventoryVerification() {
+  if (!verifyBatch.value?.id) return
+  const nextQty = Number(verifyQty.value || 0)
+  const maxQty = getVerifyMaxQty()
+  if (nextQty < 0) {
+    message.error('核实库存数量不能小于 0')
+    return
+  }
+  if (nextQty - maxQty > 0.0001) {
+    message.error(`核实库存不能大于当前剩余，最多 ${formatQtyWithUnit(maxQty, verifyBatch.value.unit || verifyBatch.value.actual_input_unit || verifyBatch.value.purchase_input_unit)}`)
+    return
+  }
+  verifySaving.value = true
+  try {
+    await api.db.verifyInventoryStock({
+      batch_id: Number(verifyBatch.value.id),
+      verified_qty: nextQty,
+      remark: verifyRemark.value || ''
+    })
+    message.success('库存核实已保存')
+    verifyVisible.value = false
+    verifyBatch.value = null
+    await loadData()
+  } catch (error) {
+    message.error(error?.message || '核实库存失败')
+  } finally {
+    verifySaving.value = false
+  }
 }
 
 onMounted(loadData)

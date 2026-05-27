@@ -3027,7 +3027,7 @@ function getBatchFactoryRemainingQty(batch, consumedQty = 0) {
 }
 
 function getPurchaseBatchAllocations(batchId) {
-  return db.prepare(`
+  const rows = db.prepare(`
     SELECT
       id,
       purchase_batch_id,
@@ -3043,17 +3043,41 @@ function getPurchaseBatchAllocations(batchId) {
     allocated_qty: Number(row.allocated_qty || 0),
     allocated_roll_count: Number(row.allocated_roll_count || 0)
   }))
+  return mergePurchaseBatchAllocationRows(rows)
+}
+
+function mergePurchaseBatchAllocationRows(allocations = []) {
+  const grouped = new Map()
+  ;(Array.isArray(allocations) ? allocations : []).forEach((item) => {
+    const factoryName = cleanText(item?.factory_name)
+    if (!factoryName) return
+    const key = factoryName.toLowerCase()
+    const current = grouped.get(key) || {
+      ...item,
+      id: Number(item?.id || 0) || null,
+      factory_name: factoryName,
+      allocated_qty: 0,
+      allocated_roll_count: 0
+    }
+    current.id = current.id && item?.id ? Math.min(Number(current.id), Number(item.id)) : (current.id || Number(item?.id || 0) || null)
+    current.purchase_batch_id = Number(current.purchase_batch_id || item?.purchase_batch_id || 0) || null
+    current.allocated_qty = round(Number(current.allocated_qty || 0) + Number(item?.allocated_qty || 0), 6)
+    current.allocated_roll_count = round(Number(current.allocated_roll_count || 0) + Number(item?.allocated_roll_count || 0), 4)
+    if (!current.created_at && item?.created_at) current.created_at = item.created_at
+    grouped.set(key, current)
+  })
+  return [...grouped.values()]
 }
 
 function replacePurchaseBatchAllocations(batchId, allocations = []) {
   db.prepare('DELETE FROM purchase_batch_factory_allocations WHERE purchase_batch_id=?').run(batchId)
-  const normalized = (Array.isArray(allocations) ? allocations : [])
+  const normalized = mergePurchaseBatchAllocationRows((Array.isArray(allocations) ? allocations : [])
     .map((item) => ({
       factory_name: cleanText(item?.factory_name),
       allocated_qty: round(Number(item?.allocated_qty || 0), 6),
       allocated_roll_count: round(Number(item?.allocated_roll_count || 0), 4)
     }))
-    .filter((item) => item.factory_name && (item.allocated_qty > 0 || item.allocated_roll_count > 0))
+    .filter((item) => item.factory_name && (item.allocated_qty > 0 || item.allocated_roll_count > 0)))
 
   if (!normalized.length) return []
 
@@ -8000,6 +8024,61 @@ function getInventorySummary(params = {}) {
 }
 
 ipcMain.handle('db:getInventorySummary', (_event, payload = {}) => getInventorySummary(payload || {}))
+ipcMain.handle('db:verifyInventoryStock', (_event, payload = {}) => {
+  assertWritable('核实库存')
+  const batchId = Number(payload.batch_id || payload.id || 0)
+  const verifiedQty = round(Number(payload.verified_qty ?? payload.qty ?? 0), 6)
+  if (!batchId) throw new Error('请选择要核实库存的批次')
+  if (!Number.isFinite(verifiedQty) || verifiedQty < 0) throw new Error('核实库存数量不能小于 0')
+
+  const select = db.prepare(`
+    SELECT pb.*, m.code AS material_code, m.name AS material_name
+    FROM purchase_batches pb
+    JOIN materials m ON m.id = pb.material_id
+    WHERE pb.id=?
+  `)
+  const tx = db.transaction(() => {
+    const before = select.get(batchId)
+    if (!before) throw new Error('未找到对应采购批次')
+    if (normalizeDocumentStatus(before.document_status) !== 'approved') {
+      throw new Error('只有已审核入库的批次才能核实库存')
+    }
+
+    const currentRemaining = round(Number(before.remaining_qty || 0), 6)
+    if (verifiedQty > currentRemaining + 0.000001) {
+      throw new Error(
+        `核实库存不能大于扣除生产成衣后的剩余量，当前最多可核实 ${formatServerQtyWithUnit(currentRemaining, before.unit)}`
+      )
+    }
+
+    db.prepare('UPDATE purchase_batches SET remaining_qty=? WHERE id=?').run(verifiedQty, batchId)
+    db.prepare('DELETE FROM inventory_cleared_batches WHERE batch_id=?').run(batchId)
+    const after = select.get(batchId)
+    const diffQty = round(verifiedQty - currentRemaining, 6)
+    logInventoryMovement({
+      movement_type: '核实库存',
+      direction: diffQty >= 0 ? 'in' : 'out',
+      material_id: before.material_id,
+      batch_id: before.id,
+      material_code: before.material_code,
+      material_name: before.material_name,
+      color: normalizeInventoryColor(before.color),
+      qty: Math.abs(diffQty),
+      unit: before.unit,
+      balance_after: verifiedQty,
+      source_table: 'purchase_batch',
+      source_id: before.id,
+      source_no: before.batch_no,
+      document_status: before.document_status,
+      remark: cleanText(payload.remark) || `库存核实：${formatServerQtyWithUnit(currentRemaining, before.unit)} -> ${formatServerQtyWithUnit(verifiedQty, before.unit)}`
+    })
+    logAudit('出仓入仓', '核实库存', 'purchase_batch', batchId, cleanText(after?.batch_no), before, after, cleanText(payload.remark))
+  })
+  tx()
+  bumpDataRevision()
+  runPostWriteMaintenance().catch(() => {})
+  return { success: true }
+})
 ipcMain.handle('db:clearInventoryResidue', (_event, payload = {}) => {
   assertWritable('清空库存台账残余')
   const scope = cleanText(payload.scope || (payload.batch_id ? 'batch' : 'material'))

@@ -33,6 +33,7 @@ const dbMethodNames = [
   'deleteBomItem',
   'getPurchaseBatches',
   'getInventorySummary',
+  'verifyInventoryStock',
   'clearInventoryResidue',
   'updatePurchaseBatchFactoryAllocations',
   'processPurchaseBatchAfterSale',
