@@ -3093,6 +3093,72 @@ function replacePurchaseBatchAllocations(batchId, allocations = []) {
   return getPurchaseBatchAllocations(batchId)
 }
 
+function normalizePurchaseBatchFactoryAllocationStorage() {
+  if (workspaceReadOnly) return 0
+  const rows = db.prepare(`
+    SELECT
+      purchase_batch_id,
+      factory_name,
+      allocated_qty,
+      allocated_roll_count,
+      created_at
+    FROM purchase_batch_factory_allocations
+    ORDER BY purchase_batch_id ASC, id ASC
+  `).all()
+  if (!rows.length) return 0
+
+  const rowsByBatch = new Map()
+  rows.forEach((row) => {
+    const batchId = Number(row.purchase_batch_id || 0)
+    const factoryName = cleanText(row.factory_name)
+    if (!batchId || !factoryName) return
+    const batchRows = rowsByBatch.get(batchId) || []
+    batchRows.push(row)
+    rowsByBatch.set(batchId, batchRows)
+  })
+
+  const selectBatch = db.prepare('SELECT * FROM purchase_batches WHERE id=?')
+  const updateBatch = db.prepare('UPDATE purchase_batches SET factory_name=?, factory_allocated_qty=? WHERE id=?')
+  const tx = db.transaction(() => {
+    let changed = 0
+    rowsByBatch.forEach((batchRows, batchId) => {
+      const merged = mergePurchaseBatchAllocationRows(batchRows)
+      const hasDuplicate = merged.length !== batchRows.length
+      if (hasDuplicate) {
+        replacePurchaseBatchAllocations(batchId, merged)
+        changed += 1
+      }
+
+      const batch = selectBatch.get(batchId)
+      if (!batch) return
+      const material = getMaterialById(batch.material_id)
+      const effectiveAllocatedQty = round(merged.reduce((sum, allocation) => {
+        return sum + Number(resolveFactoryAllocationQtyFromRollCount(batch, allocation, material) || 0)
+      }, 0), 6)
+      const factoryName = [...new Set(merged.map((item) => cleanText(item.factory_name)).filter(Boolean))].join('、')
+      if (
+        cleanText(batch.factory_name) !== factoryName
+        || Math.abs(Number(batch.factory_allocated_qty || 0) - effectiveAllocatedQty) > 0.0001
+      ) {
+        updateBatch.run(factoryName, effectiveAllocatedQty, batchId)
+        changed += 1
+      }
+    })
+    return changed
+  })
+  return tx()
+}
+
+function compareBatchNoDesc(left = {}, right = {}) {
+  const leftNo = cleanText(left.batch_no)
+  const rightNo = cleanText(right.batch_no)
+  if (leftNo || rightNo) {
+    const byBatchNo = rightNo.localeCompare(leftNo, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
+    if (byBatchNo) return byBatchNo
+  }
+  return Number(right.id || 0) - Number(left.id || 0)
+}
+
 function resolveFactoryAllocationQtyFromRollCount(batch = {}, allocation = {}, material = {}) {
   const batchRollCount = Math.max(Number(batch.roll_count || 0), 0)
   const allocatedRollCount = Math.max(Number(allocation.allocated_roll_count || 0), 0)
@@ -6057,6 +6123,7 @@ CREATE TABLE IF NOT EXISTS purchase_batches (
   received_at TEXT DEFAULT '',
   remark TEXT DEFAULT '',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(material_id) REFERENCES materials(id)
 );
 
@@ -6328,6 +6395,7 @@ ensureColumn('purchase_batches', 'factory_allocated_qty', 'REAL NOT NULL DEFAULT
 ensureColumn('purchase_batches', 'rounding_adjustment', 'REAL NOT NULL DEFAULT 0')
 ensureColumn('purchase_batches', 'merge_group_id', "TEXT DEFAULT ''")
 ensureColumn('purchase_batches', 'merge_snapshot_json', "TEXT DEFAULT ''")
+ensureColumn('purchase_batches', 'updated_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP')
 ensureColumn('purchase_batch_factory_allocations', 'factory_name', "TEXT DEFAULT ''")
 ensureColumn('purchase_batch_factory_allocations', 'allocated_qty', 'REAL NOT NULL DEFAULT 0')
 ensureColumn('purchase_batch_factory_allocations', 'allocated_roll_count', 'REAL NOT NULL DEFAULT 0')
@@ -6522,6 +6590,7 @@ runStartupWriteStep('startup:compatibility-bootstrap', () => {
     legacyRows.forEach((row) => {
       insertLegacy.run(Number(row.id), cleanText(row.factory_name), round(Number(row.factory_allocated_qty || 0), 6))
     })
+    normalizePurchaseBatchFactoryAllocationStorage()
   })()
   ensureColumn('production_order_plan_items', 'usage_unit', "TEXT DEFAULT '米'")
   ensureColumn('production_order_plan_items', 'usage_in_material_unit', 'REAL DEFAULT 0')
@@ -6902,13 +6971,15 @@ ipcMain.handle('db:addGarment', (e, payload) => {
     normalizeGarmentFactoryProcessFees(storagePayload.factory_process_fees),
     '[]'
   )
-  return normalizeInsertId(db.prepare(`
+  const insertedId = normalizeInsertId(db.prepare(`
     INSERT INTO garments (style_code, name, image_path, category, process_fee, factory_process_fee_json, markup_rate, remark, sort_order)
     VALUES (@style_code, @name, @image_path, @category, @process_fee, @factory_process_fee_json, @markup_rate, @remark, @sort_order)
   `).run({
     ...storagePayload,
     sort_order: nextSortOrder('garments')
   }).lastInsertRowid)
+  bumpDataRevision()
+  return insertedId
 })
 
 ipcMain.handle('db:updateGarment', (e, payload) => {
@@ -6919,7 +6990,7 @@ ipcMain.handle('db:updateGarment', (e, payload) => {
     normalizeGarmentFactoryProcessFees(storagePayload.factory_process_fees),
     '[]'
   )
-  return db.prepare(`
+  const changes = db.prepare(`
     UPDATE garments
     SET
       style_code=@style_code,
@@ -6932,6 +7003,8 @@ ipcMain.handle('db:updateGarment', (e, payload) => {
       remark=@remark
     WHERE id=@id
   `).run(storagePayload).changes
+  if (changes) bumpDataRevision()
+  return changes
 })
 
 ipcMain.handle('db:deleteGarment', (e, id) => {
@@ -7540,17 +7613,21 @@ ipcMain.handle('db:saveBomItem', (e, payload) => {
   }
   seedOptionValue('unit', data.usage_unit)
   if (payload.id) {
-    return db.prepare(`
+    const changes = db.prepare(`
       UPDATE boms
       SET material_id=@material_id, sort_order=@sort_order, usage=@usage, usage_unit=@usage_unit, loss_rate=@loss_rate, material_role=@material_role, supply_mode=@supply_mode, processing_requirements=@processing_requirements, material_color=@material_color, usage_mode=@usage_mode, cost_price_type=@cost_price_type
       WHERE id=@id
     `).run(data).changes
+    if (changes) bumpDataRevision()
+    return changes
   }
 
-  return normalizeInsertId(db.prepare(`
+  const insertedId = normalizeInsertId(db.prepare(`
     INSERT INTO boms (garment_id, material_id, sort_order, usage, usage_unit, loss_rate, material_role, supply_mode, processing_requirements, material_color, usage_mode, cost_price_type)
     VALUES (@garment_id, @material_id, @sort_order, @usage, @usage_unit, @loss_rate, @material_role, @supply_mode, @processing_requirements, @material_color, @usage_mode, @cost_price_type)
   `).run(data).lastInsertRowid)
+  bumpDataRevision()
+  return insertedId
 })
 
 ipcMain.handle('db:replaceBomItemsByGarment', (e, garmentId, items) => {
@@ -7584,12 +7661,15 @@ ipcMain.handle('db:replaceBomItemsByGarment', (e, garmentId, items) => {
   })
 
   tx(Number(garmentId), items || [])
+  bumpDataRevision()
   return getBomsByGarment(Number(garmentId))
 })
 
 ipcMain.handle('db:deleteBomItem', (e, id) => {
   assertWritable('删除 BOM')
-  return db.prepare('DELETE FROM boms WHERE id=?').run(id).changes
+  const changes = db.prepare('DELETE FROM boms WHERE id=?').run(id).changes
+  if (changes) bumpDataRevision()
+  return changes
 })
 
 function getPurchaseBatches(params = {}) {
@@ -8016,7 +8096,7 @@ function getInventorySummary(params = {}) {
           item.size || '',
           item.supplier_name || item.supplier || ''
         ))
-      }),
+      }).sort(compareBatchNoDesc),
       inTransit: inTransitBatches,
       inTransitBatches
     }

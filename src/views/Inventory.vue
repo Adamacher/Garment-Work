@@ -525,7 +525,7 @@ const TEXT = {
   factoryUsed: '工厂已使用',
   factoryRemain: '工厂剩余',
   warehouseRemain: '仓库剩余',
-  currentStock: '当前库存',
+  currentStock: '当前总库存',
   preAllocated: '预领用',
   factoryAvailableAfterPrealloc: '工厂预领后',
   availableAfterPrealloc: '预领后可用',

@@ -515,6 +515,16 @@ function filterSelectOption(input, option) {
   return String(option?.label || '').toLowerCase().includes(String(input || '').toLowerCase())
 }
 
+function compareBatchNoDesc(left = {}, right = {}) {
+  const leftNo = String(left.batch_no || '').trim()
+  const rightNo = String(right.batch_no || '').trim()
+  if (leftNo || rightNo) {
+    const byBatchNo = rightNo.localeCompare(leftNo, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
+    if (byBatchNo) return byBatchNo
+  }
+  return Number(right.id || 0) - Number(left.id || 0)
+}
+
 let dispatchSeed = 1
 function createDispatchAllocation(item = {}) {
   return {
@@ -668,6 +678,7 @@ const filteredRows = computed(() => {
 
   rows = rows.filter((item) => isDateInRange(item.received_at, dateRange.value))
 
+  rows = rows.sort(compareBatchNoDesc)
   if (!value) return rows
 
   const fieldMap = {
@@ -682,7 +693,7 @@ const filteredRows = computed(() => {
 
   return rows.filter((item) =>
     (fieldMap[filterField.value] || fieldMap.keyword)(item).some((field) => String(field || '').toLowerCase().includes(value))
-  )
+  ).sort(compareBatchNoDesc)
 })
 
 const pagedRows = computed(() => {
@@ -698,13 +709,7 @@ const summaryItems = computed(() => {
     0
   )
   const allocatedQty = filteredRows.value.reduce((sum, item) => sum + Number(item.factory_allocated_qty || 0), 0)
-  const warehouseQty = filteredRows.value.reduce((sum, item) => {
-    if (Number(item.warehouse_remaining_qty || 0) > 0) {
-      return sum + Number(item.warehouse_remaining_qty || 0)
-    }
-    const total = Number(item.actual_input_qty || item.purchase_input_qty || item.gross_qty || 0)
-    return sum + Math.max(total - Number(item.factory_allocated_qty || 0), 0)
-  }, 0)
+  const warehouseQty = filteredRows.value.reduce((sum, item) => sum + Number(item.warehouse_remaining_qty || 0), 0)
 
   return [
     { label: '可发厂批次', value: `${filteredRows.value.length} 批`, note: '仅显示已审核并正式入仓的采购批次' },
