@@ -1240,7 +1240,7 @@ function createLine(data = {}) {
     purchase_input_unit: normalizeUnit(data.purchase_input_unit || data.price_unit || data.unit || '米'),
     price_type: data.price_type || 'bulk',
     price_unit: normalizeUnit(data.price_unit || data.unit || '米'),
-    price: Number(data.price || 0),
+    price: normalizePurchaseUnitPrice(data.price),
     price_manually_edited: false,
     processing_cost: Number(data.processing_cost || 0),
     processing_note: data.processing_note || '',
@@ -1323,7 +1323,7 @@ function buildDraftPayload() {
       purchase_input_unit: line.purchase_input_unit || '',
       price_type: line.price_type || 'bulk',
       price_unit: line.price_unit || '',
-      price: Number(line.price || 0),
+      price: normalizePurchaseUnitPrice(line.price),
       processing_cost: Number(line.processing_cost || 0),
       processing_note: line.processing_note || '',
       remark: line.remark || ''
@@ -1521,11 +1521,19 @@ function formatSignedMoney(value, digits = 2) {
   return `${amount > 0 ? '+' : amount < 0 ? '' : ''}${formatMoney(amount, digits)}`
 }
 
+function normalizePurchaseUnitPrice(value) {
+  const number = Number(value || 0)
+  if (!Number.isFinite(number)) return 0
+  const rounded4 = Number(number.toFixed(4))
+  if (Math.abs(number - rounded4) < 0.00001) return rounded4
+  return Number(number.toFixed(6))
+}
+
 function getDefaultPriceConfig(material, line, preferredUnit = '') {
   const fallbackPrice = Number(material?.default_price || 0)
   const fallbackUnit = normalizeUnit(material?.default_price_unit || material?.unit)
   const fallbackConfig = {
-    price: fallbackPrice,
+    price: normalizePurchaseUnitPrice(fallbackPrice),
     unit: fallbackUnit
   }
 
@@ -1542,13 +1550,13 @@ function getDefaultPriceConfig(material, line, preferredUnit = '') {
     const sizePrice = matchedSize || fallbackSize
     if (Number(sizePrice?.price || 0) > 0) {
       return {
-        price: Number(sizePrice?.price || 0),
+        price: normalizePurchaseUnitPrice(sizePrice?.price),
         unit: normalizeUnit(sizePrice?.unit || matchedProfile?.default_price_unit || material.default_price_unit || material.unit)
       }
     }
     if (Number(matchedProfile?.default_price || 0) > 0) {
       return {
-        price: Number(matchedProfile.default_price || 0),
+        price: normalizePurchaseUnitPrice(matchedProfile.default_price),
         unit: normalizeUnit(matchedProfile.default_price_unit || material.default_price_unit || material.unit)
       }
     }
@@ -1559,8 +1567,8 @@ function getDefaultPriceConfig(material, line, preferredUnit = '') {
   if (!target) return fallbackConfig
   if (line.price_type === 'sample') {
     const sampleCandidates = [
-      { price: Number(target.sample_price_meter || 0), unit: '米' },
-      { price: Number(target.sample_price_yard || 0), unit: '码' }
+      { price: normalizePurchaseUnitPrice(target.sample_price_meter), unit: '米' },
+      { price: normalizePurchaseUnitPrice(target.sample_price_yard), unit: '码' }
     ].filter((item) => item.price > 0)
     const matched = sampleCandidates.find((item) => item.unit === normalizeUnit(preferredUnit))
     if (matched) return matched
@@ -1569,21 +1577,21 @@ function getDefaultPriceConfig(material, line, preferredUnit = '') {
   }
   if (line.price_type === 'net') {
     if (Number(target.net_price_meter || 0) > 0) {
-      return { price: Number(target.net_price_meter || 0), unit: '米' }
+      return { price: normalizePurchaseUnitPrice(target.net_price_meter), unit: '米' }
     }
     return fallbackConfig
   }
   const bulkCandidates = [
-    { price: Number(target.bulk_price_kg || 0), unit: '公斤' },
-    { price: Number(target.bulk_price_meter || 0), unit: '米' },
-    { price: Number(target.bulk_price_yard || 0), unit: '码' }
+    { price: normalizePurchaseUnitPrice(target.bulk_price_kg), unit: '公斤' },
+    { price: normalizePurchaseUnitPrice(target.bulk_price_meter), unit: '米' },
+    { price: normalizePurchaseUnitPrice(target.bulk_price_yard), unit: '码' }
   ].filter((item) => item.price > 0)
   const matchedBulk = bulkCandidates.find((item) => item.unit === normalizeUnit(preferredUnit))
   if (matchedBulk) return matchedBulk
   if (bulkCandidates.length) return bulkCandidates[0]
   if (Number(target.default_price || 0) > 0) {
     return {
-      price: Number(target.default_price || 0),
+      price: normalizePurchaseUnitPrice(target.default_price),
       unit: normalizeUnit(target.default_price_unit || material.default_price_unit || material.unit)
     }
   }
@@ -1618,7 +1626,7 @@ function applyMaterialDefaults(line, options = {}) {
   if (!unitOptions.includes(line.price_unit) || (forcePrice && priceConfig.unit)) line.price_unit = priceConfig.unit
   if (resetManual) line.price_manually_edited = false
   if (forcePrice || !line.price_manually_edited || !Number(line.price || 0)) {
-    line.price = priceConfig.price
+    line.price = normalizePurchaseUnitPrice(priceConfig.price)
   }
 }
 
@@ -2224,7 +2232,7 @@ async function save() {
         purchase_input_unit: line.purchase_input_unit,
         price_type: line.price_type,
         price_unit: line.price_unit,
-        price: Number(line.price || 0),
+        price: normalizePurchaseUnitPrice(line.price),
         processing_cost: Number(line.processing_cost || 0),
         processing_note: line.processing_note,
         received_at: dateValue.value || '',
