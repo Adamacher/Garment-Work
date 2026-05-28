@@ -13,7 +13,7 @@
 
           <div class="ems-menu-wrap">
             <a-menu
-              theme="dark"
+              theme="light"
               mode="inline"
               :selected-keys="[selectedPath]"
               @click="handleNavigate"
@@ -56,7 +56,7 @@
         </div>
 
         <a-menu
-          theme="dark"
+          theme="light"
           mode="inline"
           :selected-keys="[selectedPath]"
           @click="handleNavigate"
@@ -123,7 +123,7 @@ import { clearStoredSession, getStoredSession, hasFeatureAccess, SUPER_ADMIN_ROL
 
 const MOBILE_BREAKPOINT = 900
 const COLLAPSE_STORAGE_KEY = 'garment_ems_nav_collapsed'
-const SIDEBAR_WIDTH = 160
+const SIDEBAR_WIDTH = 176
 
 const route = useRoute()
 const router = useRouter()
@@ -541,5 +541,140 @@ onBeforeUnmount(() => {
   .ems-user {
     text-align: left;
   }
+}
+
+.ems-shell {
+  background:
+    radial-gradient(circle at 92% 4%, rgba(0, 122, 255, 0.12), transparent 28%),
+    linear-gradient(180deg, #f5faff 0%, #eef6ff 100%);
+}
+
+.ems-sidebar {
+  background: rgba(255, 255, 255, 0.82) !important;
+  border-right: 1px solid rgba(0, 122, 255, 0.1);
+  box-shadow: 10px 0 30px rgba(36, 75, 125, 0.07);
+  backdrop-filter: blur(22px);
+}
+
+.ems-sidebar__inner {
+  width: 176px;
+}
+
+.ems-brand {
+  min-height: 74px;
+  padding: 16px 14px;
+  border-bottom: 1px solid rgba(0, 122, 255, 0.08);
+}
+
+.ems-brand__mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #5ac8fa 0%, #007aff 100%);
+  box-shadow: 0 12px 22px rgba(0, 122, 255, 0.2);
+}
+
+.ems-brand__title {
+  color: #1d1d1f;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
+.ems-brand__subtitle {
+  color: #6b7b90;
+}
+
+.ems-menu-wrap {
+  padding: 10px 10px 16px;
+}
+
+.ems-menu-wrap :deep(.ant-menu-item) {
+  height: 38px;
+  line-height: 38px;
+  margin: 5px 0;
+  border-radius: 13px;
+  color: #4b5f78 !important;
+  font-size: 13px;
+  font-weight: 600;
+  padding-inline: 13px !important;
+}
+
+.ems-menu-wrap :deep(.ant-menu-item:hover) {
+  color: #007aff !important;
+  background: rgba(0, 122, 255, 0.08) !important;
+}
+
+.ems-menu-wrap :deep(.ant-menu-item-selected) {
+  color: #005fc7 !important;
+  background: linear-gradient(135deg, rgba(0, 122, 255, 0.16), rgba(90, 200, 250, 0.16)) !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 122, 255, 0.12), 0 10px 22px rgba(0, 122, 255, 0.1);
+}
+
+.ems-sidebar-toggle {
+  top: 14px;
+  left: 14px;
+  height: 32px;
+  min-width: 88px;
+  border: 1px solid rgba(0, 122, 255, 0.14);
+  background: rgba(255, 255, 255, 0.88);
+  color: #1d1d1f;
+  box-shadow: 0 12px 26px rgba(31, 63, 103, 0.12);
+  backdrop-filter: blur(18px);
+}
+
+.ems-sidebar-toggle:hover {
+  background: #ffffff;
+  color: #007aff;
+  box-shadow: 0 14px 28px rgba(31, 63, 103, 0.16);
+}
+
+.ems-main {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(90, 200, 250, 0.16), transparent 25%),
+    linear-gradient(180deg, #f5faff 0%, #edf6ff 100%);
+}
+
+.ems-topbar {
+  height: 78px;
+  padding: 14px 26px 14px 118px;
+  background: rgba(255, 255, 255, 0.76);
+  border-bottom: 1px solid rgba(0, 122, 255, 0.1);
+  box-shadow: 0 10px 30px rgba(31, 63, 103, 0.06);
+  backdrop-filter: blur(22px);
+}
+
+.ems-page-title {
+  color: #1d1d1f;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+
+.ems-page-subtitle {
+  color: #66788f;
+}
+
+.ems-version {
+  background: rgba(0, 122, 255, 0.1);
+  color: #0066d6;
+  border: 1px solid rgba(0, 122, 255, 0.12);
+}
+
+.ems-user__name {
+  color: #1d1d1f;
+}
+
+.ems-user__role {
+  color: #7b8794;
+}
+
+.ems-logout {
+  border-color: rgba(0, 122, 255, 0.16) !important;
+  background: rgba(255, 255, 255, 0.82) !important;
+  color: #0066d6 !important;
+}
+
+.ems-content {
+  min-height: calc(100vh - 78px);
+  padding: 26px 32px 34px;
 }
 </style>

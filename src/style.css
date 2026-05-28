@@ -12,6 +12,254 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Apple blue-white refresh layer */
+:root {
+  --ems-blue: #007aff;
+  --ems-blue-strong: #0066d6;
+  --ems-blue-soft: rgba(0, 122, 255, 0.1);
+  --ems-sky-soft: rgba(90, 200, 250, 0.16);
+  --ems-bg: #f5faff;
+  --ems-bg-2: #edf6ff;
+  --ems-surface: rgba(255, 255, 255, 0.9);
+  --ems-surface-solid: #ffffff;
+  --ems-border: rgba(0, 122, 255, 0.12);
+  --ems-border-strong: rgba(0, 122, 255, 0.2);
+  --ems-text: #1d1d1f;
+  --ems-muted: #5b6b80;
+  --ems-muted-2: #7b8794;
+  --ems-radius-sm: 12px;
+  --ems-radius: 18px;
+  --ems-radius-lg: 24px;
+  --ems-shadow: 0 18px 48px rgba(31, 63, 103, 0.09);
+  --ems-shadow-soft: 0 10px 26px rgba(31, 63, 103, 0.06);
+}
+
+html,
+body {
+  background:
+    radial-gradient(circle at 92% 0%, var(--ems-sky-soft), transparent 24%),
+    radial-gradient(circle at 0% 12%, rgba(0, 122, 255, 0.08), transparent 24%),
+    linear-gradient(180deg, var(--ems-bg) 0%, var(--ems-bg-2) 100%) !important;
+  color: var(--ems-text);
+}
+
+.erp-page {
+  color: var(--ems-text);
+}
+
+.content-card,
+.erp-filter-card,
+.page-summary-strip,
+.erp-toolbar,
+.toolbar,
+.formula-box,
+.dashboard-share-card {
+  background: var(--ems-surface) !important;
+  border: 1px solid var(--ems-border) !important;
+  border-radius: var(--ems-radius-lg) !important;
+  box-shadow: var(--ems-shadow-soft) !important;
+  backdrop-filter: blur(18px);
+}
+
+.content-card {
+  overflow: hidden;
+}
+
+.content-card .ant-card-head,
+.ant-modal .ant-modal-header {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(245, 250, 255, 0.92)) !important;
+  border-bottom: 1px solid var(--ems-border) !important;
+}
+
+.content-card .ant-card-head-title,
+.ant-modal .ant-modal-title,
+.page-title,
+.table-primary {
+  color: var(--ems-text) !important;
+  letter-spacing: -0.02em;
+}
+
+.page-subtitle,
+.table-secondary,
+.formula-box,
+.page-summary-strip__note,
+.page-summary-strip__label {
+  color: var(--ems-muted) !important;
+}
+
+.page-summary-strip {
+  gap: 10px;
+  padding: 12px !important;
+}
+
+.page-summary-strip__item {
+  border: 1px solid rgba(0, 122, 255, 0.1) !important;
+  border-radius: 18px !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(245, 250, 255, 0.86)) !important;
+  box-shadow: none !important;
+}
+
+.page-summary-strip__item::after {
+  background: linear-gradient(90deg, var(--ems-blue), #5ac8fa) !important;
+}
+
+.page-summary-strip__value {
+  color: var(--ems-text) !important;
+  letter-spacing: -0.03em;
+}
+
+.toolbar,
+.erp-toolbar,
+.erp-filter-card {
+  padding: 12px !important;
+}
+
+.ant-input,
+.ant-input-number,
+.ant-picker,
+.ant-select-selector,
+.ant-input-affix-wrapper,
+.toolbar .ant-input,
+.toolbar .ant-input-number,
+.toolbar .ant-select-selector,
+.erp-toolbar .ant-input,
+.erp-toolbar .ant-input-number,
+.erp-toolbar .ant-select-selector,
+.erp-filter-card .ant-input,
+.erp-filter-card .ant-input-number,
+.erp-filter-card .ant-select-selector {
+  min-height: 36px !important;
+  border-color: rgba(91, 107, 128, 0.16) !important;
+  border-radius: 14px !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: var(--ems-text) !important;
+  box-shadow: none !important;
+}
+
+.ant-input:hover,
+.ant-input-number:hover,
+.ant-picker:hover,
+.ant-select-selector:hover,
+.ant-input-affix-wrapper:hover {
+  border-color: var(--ems-border-strong) !important;
+}
+
+.ant-input:focus,
+.ant-input-focused,
+.ant-input-number-focused,
+.ant-picker-focused,
+.ant-select-focused .ant-select-selector,
+.ant-input-affix-wrapper-focused {
+  border-color: var(--ems-blue) !important;
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.12) !important;
+}
+
+.ant-btn {
+  border-radius: 14px !important;
+  font-weight: 600;
+  box-shadow: none !important;
+}
+
+.ant-btn-primary {
+  border-color: transparent !important;
+  background: linear-gradient(135deg, #0a84ff, #007aff) !important;
+  box-shadow: 0 12px 24px rgba(0, 122, 255, 0.18) !important;
+}
+
+.ant-btn-default,
+.toolbar-secondary-btn,
+.toolbar-column-config-btn {
+  border-color: rgba(0, 122, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.86) !important;
+  color: #24547f !important;
+}
+
+.toolbar-refresh-btn,
+.erp-toolbar__actions .toolbar-refresh-btn,
+.toolbar-right .toolbar-refresh-btn {
+  border-color: rgba(0, 122, 255, 0.14) !important;
+  background: rgba(0, 122, 255, 0.1) !important;
+  color: var(--ems-blue-strong) !important;
+}
+
+.ant-table-wrapper .ant-table,
+.erp-dense-table .ant-table {
+  border-radius: var(--ems-radius-lg) !important;
+  background: var(--ems-surface-solid) !important;
+  box-shadow: var(--ems-shadow-soft);
+}
+
+.ant-table-wrapper .ant-table-thead > tr > th,
+.erp-dense-table .ant-table-thead > tr > th {
+  background: #f1f8ff !important;
+  color: #214262 !important;
+  border-bottom: 1px solid var(--ems-border) !important;
+  font-weight: 700;
+}
+
+.ant-table-wrapper .ant-table-tbody > tr > td,
+.erp-dense-table .ant-table-tbody > tr > td {
+  border-bottom: 1px solid rgba(0, 122, 255, 0.08) !important;
+  color: #24364b;
+}
+
+.ant-table-wrapper .ant-table-tbody > tr:hover > td {
+  background: #f5fbff !important;
+}
+
+.ant-pagination-item,
+.ant-pagination-prev .ant-pagination-item-link,
+.ant-pagination-next .ant-pagination-item-link {
+  border-color: rgba(0, 122, 255, 0.14) !important;
+  border-radius: 12px !important;
+}
+
+.ant-pagination-item-active {
+  border-color: var(--ems-blue) !important;
+  background: var(--ems-blue) !important;
+}
+
+.ant-pagination-item-active a {
+  color: #ffffff !important;
+}
+
+.ant-select-dropdown,
+.ant-picker-dropdown,
+.ant-dropdown,
+.ant-popover,
+.ant-modal-root {
+  z-index: 3000 !important;
+}
+
+.ant-select-dropdown,
+.ant-picker-panel-container,
+.ant-dropdown-menu,
+.ant-popover-inner,
+.ant-modal .ant-modal-content {
+  border: 1px solid var(--ems-border) !important;
+  border-radius: 18px !important;
+  box-shadow: var(--ems-shadow) !important;
+}
+
+.ant-modal .ant-modal-content {
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.96) !important;
+}
+
+.ant-modal .ant-modal-body {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(90, 200, 250, 0.12), transparent 24%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 251, 255, 0.96)) !important;
+}
+
+.section-grid {
+  gap: 20px;
+}
+
+.dashboard-actions {
+  gap: 10px;
+}
+
 body {
   margin: 0;
   min-width: 1180px;
@@ -2190,5 +2438,86 @@ body {
     font-size: 11px;
     line-height: 1.4;
   }
+}
+
+/* Keep the refresh layer last so it wins over legacy page styles. */
+.content-card,
+.erp-filter-card,
+.page-summary-strip,
+.erp-toolbar,
+.toolbar,
+.formula-box,
+.dashboard-share-card {
+  background: var(--ems-surface) !important;
+  border: 1px solid var(--ems-border) !important;
+  border-radius: var(--ems-radius-lg) !important;
+  box-shadow: var(--ems-shadow-soft) !important;
+}
+
+.content-card .ant-card-head,
+.ant-modal .ant-modal-header {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(245, 250, 255, 0.92)) !important;
+  border-bottom: 1px solid var(--ems-border) !important;
+}
+
+.ant-input,
+.ant-input-number,
+.ant-picker,
+.ant-select-selector,
+.ant-input-affix-wrapper {
+  min-height: 36px !important;
+  border-color: rgba(91, 107, 128, 0.16) !important;
+  border-radius: 14px !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: var(--ems-text) !important;
+  box-shadow: none !important;
+}
+
+.ant-input:focus,
+.ant-input-focused,
+.ant-input-number-focused,
+.ant-picker-focused,
+.ant-select-focused .ant-select-selector,
+.ant-input-affix-wrapper-focused {
+  border-color: var(--ems-blue) !important;
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.12) !important;
+}
+
+.ant-btn {
+  border-radius: 14px !important;
+  font-weight: 600;
+}
+
+.ant-btn-primary {
+  border-color: transparent !important;
+  background: linear-gradient(135deg, #0a84ff, #007aff) !important;
+  box-shadow: 0 12px 24px rgba(0, 122, 255, 0.18) !important;
+}
+
+.ant-table-wrapper .ant-table,
+.erp-dense-table .ant-table {
+  border-radius: var(--ems-radius-lg) !important;
+  background: var(--ems-surface-solid) !important;
+  box-shadow: var(--ems-shadow-soft);
+}
+
+.ant-table-wrapper .ant-table-thead > tr > th,
+.erp-dense-table .ant-table-thead > tr > th {
+  background: #f1f8ff !important;
+  color: #214262 !important;
+  border-bottom: 1px solid var(--ems-border) !important;
+}
+
+.ant-table-wrapper .ant-table-tbody > tr > td,
+.erp-dense-table .ant-table-tbody > tr > td {
+  border-bottom: 1px solid rgba(0, 122, 255, 0.08) !important;
+}
+
+.ant-select-dropdown,
+.ant-picker-dropdown,
+.ant-dropdown,
+.ant-popover,
+.ant-modal-root {
+  z-index: 3000 !important;
 }
 
