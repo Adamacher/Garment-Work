@@ -36,6 +36,7 @@ const LAN_LOCAL_ONLY_CHANNELS = new Set([
 const APP_ID = packageMeta.build?.appId || 'com.zhiyi.ems'
 const APP_NAME = packageMeta.build?.productName || packageMeta.productName || packageMeta.name || 'Garment EMS'
 const STARTUP_FALLBACK_LOG_FILE = path.join(path.dirname(process.execPath), 'startup-main.log')
+const RENDERER_RECOVERY_MARK = 'garment-ems-renderer-recovery'
 let dbApi = null
 const originalIpcMainHandle = ipcMain.handle.bind(ipcMain)
 const originalIpcMainRemoveHandler = typeof ipcMain.removeHandler === 'function'
@@ -148,7 +149,7 @@ function createWindow() {
     width: 1480,
     height: 960,
     show: false,
-    backgroundColor: '#f3f0e8',
+    backgroundColor: '#f5faff',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -168,6 +169,46 @@ function createWindow() {
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
     writeStartupLog('webContents:did-fail-load', `code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
+  })
+
+  mainWindow.webContents.on('did-navigate', (_event, url) => {
+    if (/\.css(?:$|[?#])/i.test(String(url || ''))) {
+      writeStartupLog('webContents:css-navigation-recover', url)
+      const fallbackEntry = resolveRendererEntry()
+      if (fallbackEntry.type === 'url') {
+        mainWindow.loadURL(fallbackEntry.value)
+      } else {
+        mainWindow.loadFile(fallbackEntry.value)
+      }
+    }
+  })
+
+  mainWindow.webContents.on('did-finish-load', async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    try {
+      const recoveryState = await mainWindow.webContents.executeJavaScript(`
+        (() => {
+          const text = (document.body && document.body.innerText || '').trim()
+          const hasAppRoot = Boolean(document.querySelector('#app'))
+          const looksLikeCss = text.startsWith('.anticon') || text.startsWith(':where(') || text.includes('.ant-card') || text.includes('.ant-form')
+          return { hasAppRoot, looksLikeCss, textLength: text.length, title: document.title }
+        })()
+      `)
+      if (recoveryState?.looksLikeCss && !recoveryState?.hasAppRoot) {
+        writeStartupLog('webContents:css-document-recover', JSON.stringify(recoveryState))
+        const currentUrl = mainWindow.webContents.getURL()
+        if (!String(currentUrl || '').includes(RENDERER_RECOVERY_MARK)) {
+          const fallbackEntry = resolveRendererEntry()
+          if (fallbackEntry.type === 'url') {
+            mainWindow.loadURL(fallbackEntry.value)
+          } else {
+            mainWindow.loadFile(fallbackEntry.value, { query: { [RENDERER_RECOVERY_MARK]: '1' } })
+          }
+        }
+      }
+    } catch (error) {
+      writeStartupLog('webContents:finish-load-check-failed', error?.message || String(error || ''))
+    }
   })
 
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
