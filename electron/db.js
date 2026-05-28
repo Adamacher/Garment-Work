@@ -472,7 +472,8 @@ function ensureColumn(table, column, definition) {
   if (!hasColumn(table, column)) {
     runStartupWriteStep(`ensureColumn:${table}.${column}`, () => {
       if (!hasColumn(table, column)) {
-        db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+        const safeDefinition = String(definition || '').replace(/\s+DEFAULT\s+CURRENT_(?:TIMESTAMP|DATE|TIME)\b/gi, '')
+        db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${safeDefinition || definition}`)
         const tableName = cleanText(table)
         const columnName = cleanText(column)
         if (tableName && columnName) {
@@ -6396,6 +6397,15 @@ ensureColumn('purchase_batches', 'rounding_adjustment', 'REAL NOT NULL DEFAULT 0
 ensureColumn('purchase_batches', 'merge_group_id', "TEXT DEFAULT ''")
 ensureColumn('purchase_batches', 'merge_snapshot_json', "TEXT DEFAULT ''")
 ensureColumn('purchase_batches', 'updated_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP')
+runStartupWriteStep('backfill:purchase_batches.updated_at', () => {
+  if (hasColumn('purchase_batches', 'updated_at')) {
+    db.prepare(`
+      UPDATE purchase_batches
+      SET updated_at=COALESCE(NULLIF(created_at, ''), CURRENT_TIMESTAMP)
+      WHERE updated_at IS NULL OR updated_at=''
+    `).run()
+  }
+})
 ensureColumn('purchase_batch_factory_allocations', 'factory_name', "TEXT DEFAULT ''")
 ensureColumn('purchase_batch_factory_allocations', 'allocated_qty', 'REAL NOT NULL DEFAULT 0')
 ensureColumn('purchase_batch_factory_allocations', 'allocated_roll_count', 'REAL NOT NULL DEFAULT 0')
@@ -6630,6 +6640,15 @@ runStartupWriteStep('startup:compatibility-bootstrap', () => {
   ensureColumn('users', 'permissions_json', "TEXT DEFAULT '[]'")
   ensureColumn('users', 'enabled', 'INTEGER DEFAULT 1')
   ensureColumn('users', 'updated_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP')
+  runStartupWriteStep('backfill:users.updated_at', () => {
+    if (hasColumn('users', 'updated_at')) {
+      db.prepare(`
+        UPDATE users
+        SET updated_at=COALESCE(NULLIF(created_at, ''), CURRENT_TIMESTAMP)
+        WHERE updated_at IS NULL OR updated_at=''
+      `).run()
+    }
+  })
   ensureColumn('audit_logs', 'operator_id', 'INTEGER DEFAULT NULL')
   ensureColumn('audit_logs', 'operator_username', "TEXT DEFAULT ''")
   ensureColumn('audit_logs', 'operator_name', "TEXT DEFAULT ''")
