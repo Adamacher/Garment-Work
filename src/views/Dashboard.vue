@@ -1,115 +1,99 @@
 <template>
-  <div class="erp-page">
+  <div class="erp-page dashboard-workbench">
+    <section class="smart-hero">
+      <div>
+        <div class="smart-hero__eyebrow">智能工作台</div>
+        <h1>今天先处理最重要的事</h1>
+        <p>系统会把待审核、库存预警、预领用异常和常用入口集中到这里，点击卡片即可跳转并自动筛选。</p>
+      </div>
+      <div class="smart-hero__actions">
+        <a-button class="toolbar-refresh-btn" :loading="pageRefreshing" @click="refreshPage">刷新工作台</a-button>
+        <a-button type="primary" @click="chooseWorkspaceDirectory">更改当前工作目录</a-button>
+      </div>
+    </section>
+
     <div class="page-summary-strip stats-grid-extended">
-      <div v-for="item in summaryItems" :key="item.key" class="page-summary-strip__item">
+      <button
+        v-for="item in summaryItems"
+        :key="item.key"
+        type="button"
+        class="page-summary-strip__item smart-stat-card"
+        @click="goWorkbench(item.route)"
+      >
         <div class="page-summary-strip__label">{{ item.label }}</div>
         <div class="page-summary-strip__value">{{ item.value }}</div>
         <div class="page-summary-strip__note">{{ item.note }}</div>
-      </div>
+      </button>
     </div>
 
-    <div class="section-grid" style="margin-top: 20px;">
+    <div class="workbench-grid">
+      <a-card class="content-card smart-panel" :bordered="false">
+        <template #title>智能待办</template>
+        <div v-if="smartLoading" class="smart-skeleton">
+          <a-skeleton active :paragraph="{ rows: 4 }" />
+        </div>
+        <div v-else class="smart-task-grid">
+          <button
+            v-for="card in smartCards"
+            :key="card.key"
+            type="button"
+            :class="['smart-task-card', `smart-task-card--${card.tone}`]"
+            @click="goWorkbench(card.route)"
+          >
+            <div class="smart-task-card__top">
+              <span>{{ card.label }}</span>
+              <a-tag :color="card.tagColor">{{ card.tag }}</a-tag>
+            </div>
+            <strong>{{ card.value }}</strong>
+            <p>{{ card.note }}</p>
+          </button>
+        </div>
+      </a-card>
+
+      <a-card class="content-card smart-panel" :bordered="false">
+        <template #title>快速动作</template>
+        <div class="quick-action-grid">
+          <a-button type="primary" @click="goWorkbench({ path: '/purchase', query: { action: 'create' } })">新增采购批次</a-button>
+          <a-button type="primary" @click="goWorkbench({ path: '/production', query: { action: 'create' } })">新增生产单</a-button>
+          <a-button @click="goWorkbench({ path: '/inventory', query: { stock_scope: 'warning' } })">查看库存预警</a-button>
+          <a-button @click="goWorkbench({ path: '/factory-dispatch', query: { stock_scope: 'warehouse' } })">查看仓库库存</a-button>
+        </div>
+        <div class="smart-tip-box">
+          <div class="smart-tip-box__title">智能提示</div>
+          <div v-for="tip in smartTips" :key="tip" class="smart-tip-box__line">{{ tip }}</div>
+        </div>
+      </a-card>
+    </div>
+
+    <div class="workbench-grid workbench-grid--bottom">
       <a-card class="content-card" :bordered="false">
         <template #title>工作目录与备份</template>
-
-        <div class="formula-box" style="margin-bottom: 16px;">
-          程序会把业务数据和图片保存在当前工作目录的数据库里。需要更换电脑、移动数据或切换目录时，可以在这里选择新的工作目录。
-        </div>
-
-        <div class="dashboard-actions">
-          <a-button class="toolbar-refresh-btn" :loading="pageRefreshing" @click="refreshPage">刷新</a-button>
+        <div class="dashboard-actions dashboard-actions--compact">
           <a-button type="primary" @click="chooseWorkspaceDirectory">更改当前工作目录</a-button>
-          <a-button type="primary" :loading="lanConfig.loading" @click="enableRemoteShare">启用手机远程共享</a-button>
-          <a-button :loading="lanConfig.loading" @click="disableRemoteShare">关闭远程共享</a-button>
-          <a-button :disabled="!lanConfig.network.tailscale_host" @click="useTailscaleHost">使用 Tailscale 地址</a-button>
-          <a-button @click="setCurrentComputerAsHost">设当前电脑为主机</a-button>
           <a-button @click="syncLocalDatabaseBackup">同步程序根目录备份</a-button>
-          <a-button :loading="autoLaunchLoading" :disabled="!autoLaunchSupported" @click="toggleAutoLaunch">
-            {{ autoLaunch ? '关闭开机自启' : '开启开机自启' }}
-          </a-button>
+          <a-button @click="exportDatabaseFile">导出完整数据库</a-button>
+          <a-button @click="importDatabaseFile">从数据库文件恢复</a-button>
           <a-button :loading="workspaceInfo.storage_optimization_running" @click="optimizeStorage">
             {{ workspaceInfo.storage_optimization_running ? '数据库瘦身中' : '数据库瘦身' }}
           </a-button>
-          <a-button @click="exportDatabaseFile">导出完整数据库</a-button>
-          <a-button @click="importDatabaseFile">从数据库文件恢复</a-button>
+          <a-button :loading="autoLaunchLoading" :disabled="!autoLaunchSupported" @click="toggleAutoLaunch">
+            {{ autoLaunch ? '关闭开机自启' : '开启开机自启' }}
+          </a-button>
           <a-button @click="applyPatchPackage">导入补丁包升级</a-button>
         </div>
 
-        <div class="formula-box" style="margin-bottom: 16px;">
-          <div style="font-weight: 700; margin-bottom: 8px;">Windows 远程访问</div>
-          <div style="margin-bottom: 12px; color: #5b6b8b;">
-            其他 Windows 电脑也可以通过 Tailscale 访问这台主机，不需要再直接打开数据库文件。
-          </div>
-          <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
-            <a-input
-              v-model:value="remoteDesktopHost"
-              style="width: 420px; max-width: 100%;"
-              placeholder="请输入主机的 Tailscale 地址，例如：http://100.x.x.x:18680"
-            />
-            <a-button type="primary" :loading="lanConfig.loading" @click="enableWindowsRemoteAccess()">启用 Windows 远程访问</a-button>
-            <a-button :disabled="!lanConfig.network.tailscale_host" @click="useCurrentTailscaleForWindowsRemote">填入当前 Tailscale 地址</a-button>
-            <a-button :loading="lanConfig.loading" @click="disableWindowsRemoteAccess">恢复本机数据库</a-button>
-          </div>
-          <div style="margin-top: 12px; color: #5b6b8b;">{{ desktopRemoteModeText }}</div>
-        </div>
-
-        <div class="dashboard-share-status">
-          <div class="dashboard-share-card">
-            <div class="dashboard-share-title">远程共享状态</div>
-            <div :class="['dashboard-share-value', lanConfig.runtime.running ? 'is-on' : 'is-off']">
-              {{ lanConfig.runtime.running ? '已开启' : '未开启' }}
-            </div>
-            <div class="dashboard-share-desc">
-              {{ lanConfig.runtime.message || (lanConfig.enabled ? '正在启动共享服务' : '当前未开放手机远程访问') }}
-            </div>
-          </div>
-
-          <div class="dashboard-share-card">
-            <div class="dashboard-share-title">Tailscale 地址</div>
-            <div class="dashboard-share-copy">{{ lanConfig.network.tailscale_host || '未检测到 Tailscale' }}</div>
-            <div class="dashboard-share-desc">手机和异地电脑优先使用这个地址访问，最稳定。</div>
-          </div>
-
-          <div class="dashboard-share-card">
-            <div class="dashboard-share-title">当前工作目录</div>
-            <div class="dashboard-share-copy">{{ workspaceInfo.workspace_path || '-' }}</div>
-            <div class="dashboard-share-desc">业务数据库和图片都会跟随这个目录。</div>
-          </div>
-        </div>
-
-        <a-descriptions :column="1" bordered size="small">
+        <a-descriptions :column="1" bordered size="small" class="workspace-desc">
           <a-descriptions-item label="当前版本">{{ currentVersion }}</a-descriptions-item>
-          <a-descriptions-item label="当前工作目录">{{ workspaceInfo.workspace_path || '-' }}</a-descriptions-item>
+          <a-descriptions-item label="当前工作目录">{{ workspaceInfo.workspace_path || '加载中...' }}</a-descriptions-item>
           <a-descriptions-item label="当前数据库文件">{{ workspaceInfo.database_path || '-' }}</a-descriptions-item>
-          <a-descriptions-item label="主机电脑">{{ workspaceInfo.is_host ? '当前电脑' : (workspaceInfo.host_computer_name || '-') }}</a-descriptions-item>
-          <a-descriptions-item label="远程共享主地址">{{ lanConfig.host || '-' }}</a-descriptions-item>
-          <a-descriptions-item label="远程共享端口">{{ lanConfig.port || '-' }}</a-descriptions-item>
-          <a-descriptions-item label="数据模式">{{ workspaceInfo.is_network_path ? '网络目录模式' : '本机目录模式' }}</a-descriptions-item>
-          <a-descriptions-item label="访问模式">
-            {{ workspaceInfo.access_mode_label || (workspaceInfo.is_read_only ? '只读模式' : '普通模式') }}
-          </a-descriptions-item>
-          <a-descriptions-item label="程序根目录备份">{{ workspaceInfo.local_backup_path || '-' }}</a-descriptions-item>
+          <a-descriptions-item label="数据库大小">{{ workspaceInfo.file_size ? formatFileSize(workspaceInfo.file_size) : '-' }}</a-descriptions-item>
           <a-descriptions-item label="每日自动备份">
             {{ workspaceInfo.daily_backup_exists ? '今天已生成' : '今天尚未生成' }}
             <span v-if="workspaceInfo.daily_backup_updated_at">，最近更新：{{ workspaceInfo.daily_backup_updated_at }}</span>
           </a-descriptions-item>
-          <a-descriptions-item label="数据库大小">{{ workspaceInfo.file_size ? formatFileSize(workspaceInfo.file_size) : '-' }}</a-descriptions-item>
           <a-descriptions-item label="数据库瘦身">
             {{ workspaceInfo.storage_optimization_stage || '未开始' }}
             <span v-if="workspaceInfo.storage_optimization_running">，进度：{{ workspaceInfo.storage_optimization_progress_percent }}%</span>
-            <span v-else-if="workspaceInfo.storage_optimization_finished_at">，完成时间：{{ workspaceInfo.storage_optimization_finished_at }}</span>
-            <span v-if="workspaceInfo.storage_optimization_estimated_saved_size">
-              ，预计释放：{{ formatFileSize(workspaceInfo.storage_optimization_estimated_saved_size) }}
-            </span>
-          </a-descriptions-item>
-          <a-descriptions-item label="开机自启">
-            {{ autoLaunchSupported ? (autoLaunch ? '已开启' : '未开启') : '当前环境不支持' }}
-          </a-descriptions-item>
-          <a-descriptions-item label="离线同步状态">
-            <span v-if="workspaceInfo.offline_conflict">检测到离线期间主机数据已变化，当前未自动回传，请回主机电脑处理。</span>
-            <span v-else-if="workspaceInfo.offline_pending_sync">当前有离线数据待主机恢复后自动回传。</span>
-            <span v-else-if="workspaceInfo.offline_mode">当前处于离线本地模式，正在等待主机恢复。</span>
-            <span v-else>当前没有待回传的离线数据。</span>
           </a-descriptions-item>
         </a-descriptions>
       </a-card>
@@ -117,11 +101,10 @@
       <a-card class="content-card" :bordered="false">
         <template #title>使用说明</template>
         <div class="formula-box">
-          <div>1. 更改当前工作目录会把数据库切换到所选目录，程序会自动备份并重启。</div>
-          <div>2. 当前数据库和图片都保存在同一份库里，备份、恢复和迁移时不会丢图。</div>
-          <div>3. 需要换电脑使用时，优先导出完整数据库，再在新电脑恢复。</div>
-          <div>4. 手机或异地电脑访问仍使用远程访问功能，不再通过首页设置局域网目录共享。</div>
-          <div>5. 建议开启开机自启，主机电脑保持程序打开后远程访问会更稳定。</div>
+          <div>1. 工作台卡片可以直接跳转到对应页面，并自动带入筛选条件。</div>
+          <div>2. 未审核生产单会形成预领用提示，审核后才会真正影响库存。</div>
+          <div>3. 更换电脑或迁移数据时，优先导出完整数据库，再在新电脑恢复。</div>
+          <div>4. 大量图片和表格会延迟加载，列表页只渲染当前分页，减少卡顿。</div>
         </div>
       </a-card>
     </div>
@@ -130,16 +113,11 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import {
-  api,
-  checkRemoteHostHealth,
-  clearStoredRemoteHost,
-  formatMoney,
-  getStoredRemoteHost,
-  normalizeRemoteHost,
-  setStoredRemoteHost,
-} from '@/utils/api'
+import { api, formatMoney } from '@/utils/api'
+
+const router = useRouter()
 
 const stats = reactive({
   materialsCount: 0,
@@ -151,83 +129,100 @@ const stats = reactive({
   stockValue: 0,
 })
 
-const currentVersion = ref('-')
-const pageRefreshing = ref(false)
-const remoteDesktopHost = ref('')
-const autoLaunch = ref(false)
-const autoLaunchSupported = ref(false)
-const autoLaunchLoading = ref(false)
-let optimizeStatusTimer = null
-
 const workspaceInfo = reactive({
   workspace_path: '',
   database_path: '',
   file_size: 0,
-  is_network_path: false,
-  is_read_only: false,
-  access_mode_label: '',
-  sharing_tip: '',
-  host_computer_name: '',
-  host_workspace_path: '',
-  preferred_shared_workspace_path: '',
-  is_host: false,
-  offline_mode: false,
-  offline_pending_sync: false,
-  offline_conflict: false,
-  local_backup_path: '',
-  local_backup_exists: false,
-  local_backup_updated_at: '',
   daily_backup_exists: false,
   daily_backup_updated_at: '',
   storage_optimization_running: false,
   storage_optimization_stage: '',
   storage_optimization_progress_percent: 0,
-  storage_optimization_started_at: '',
-  storage_optimization_finished_at: '',
-  storage_optimization_message: '',
-  storage_optimization_estimated_saved_size: 0,
 })
 
-const lanConfig = reactive({
-  enabled: false,
-  port: 18680,
-  host: '',
-  host_computer_name: '',
-  prefer_remote: false,
-  is_host: false,
-  loading: false,
-  network: {
-    preferred_host: '',
-    tailscale_host: '',
-    tailscale_ip: '',
-    local_hosts: [],
-  },
-  runtime: {
-    running: false,
-    port: 0,
-    host: '',
-    message: '',
-  },
-})
+const currentVersion = ref('-')
+const pageRefreshing = ref(false)
+const smartLoading = ref(false)
+const autoLaunch = ref(false)
+const autoLaunchSupported = ref(false)
+const autoLaunchLoading = ref(false)
+const purchaseSnapshot = ref([])
+const productionSnapshot = ref([])
+const inventorySnapshot = ref({ materials: [], batches: [] })
+let optimizeStatusTimer = null
 
 const summaryItems = computed(() => [
-  { key: 'materials', label: '物料档案', value: stats.materialsCount, note: '已建立的原料基础档案数' },
-  { key: 'garments', label: '成衣款数', value: stats.garmentsCount, note: '当前维护中的款号数量' },
-  { key: 'batches', label: '采购批次', value: stats.batchesCount, note: '采购批次与采购单数量概览' },
-  { key: 'production', label: '生产制单', value: stats.productionCount, note: '生产单据与阶段流转情况' },
-  { key: 'consumption', label: '单耗记录', value: stats.consumptionCount, note: '单耗分析已记录条数' },
-  { key: 'warning', label: '红色预警', value: stats.warningCount, note: '当前异常或预警条目数' },
-  { key: 'stockValue', label: '库存货值', value: formatMoney(stats.stockValue), note: '按库存均价计算的当前货值' },
+  { key: 'materials', label: '物料档案', value: stats.materialsCount, note: '点击进入物料资料', route: { path: '/material' } },
+  { key: 'garments', label: '成衣款数', value: stats.garmentsCount, note: '点击进入成衣管理', route: { path: '/style' } },
+  { key: 'batches', label: '采购批次', value: stats.batchesCount, note: '点击查看采购单', route: { path: '/purchase' } },
+  { key: 'production', label: '生产制单', value: stats.productionCount, note: '点击查看生产单', route: { path: '/production' } },
+  { key: '红色预警', label: '红色预警', value: stats.warningCount, note: '异常和预警汇总', route: { path: '/production', query: { only_warnings: '1' } } },
+  { key: 'stockValue', label: '库存货值', value: formatMoney(stats.stockValue), note: '按库存均价计算', route: { path: '/inventory' } },
 ])
 
-const desktopRemoteModeText = computed(() => {
-  if (lanConfig.is_host) {
-    return `当前电脑是主机：${lanConfig.host || lanConfig.network.preferred_host || '本机共享中'}`
+const pendingPurchases = computed(() => purchaseSnapshot.value.filter((item) => String(item.document_status || 'draft') === 'submitted'))
+const pendingProductions = computed(() => productionSnapshot.value.filter((item) => String(item.document_status || 'draft') === 'submitted'))
+const inventoryWarnings = computed(() =>
+  (inventorySnapshot.value.materials || []).filter((item) =>
+    Number(item.available_after_prealloc_qty ?? item.current_stock_qty ?? 0) < -0.0001 ||
+    Number(item.factory_available_after_prealloc_qty ?? 0) < -0.0001 ||
+    Number(item.current_stock_qty ?? 0) < 0.0001
+  )
+)
+const preallocWarnings = computed(() =>
+  (inventorySnapshot.value.materials || []).filter((item) => Number(item.pre_allocated_qty || 0) > 0 && Number(item.available_after_prealloc_qty || 0) < -0.0001)
+)
+
+const smartCards = computed(() => [
+  {
+    key: 'purchase-review',
+    label: '待审核采购',
+    value: `${pendingPurchases.value.length} 张`,
+    note: '需要补图片、审核或退回草稿的采购单',
+    tag: '采购',
+    tagColor: 'blue',
+    tone: pendingPurchases.value.length ? 'info' : 'safe',
+    route: { path: '/purchase', query: { document_status: 'submitted' } }
+  },
+  {
+    key: 'production-review',
+    label: '待审核生产',
+    value: `${pendingProductions.value.length} 张`,
+    note: '进入审核后才会正式扣减库存',
+    tag: '生产',
+    tagColor: 'cyan',
+    tone: pendingProductions.value.length ? 'info' : 'safe',
+    route: { path: '/production', query: { document_status: 'submitted' } }
+  },
+  {
+    key: 'inventory-warning',
+    label: '库存预警',
+    value: `${inventoryWarnings.value.length} 项`,
+    note: '含负库存、零库存和预领后不足',
+    tag: '库存',
+    tagColor: inventoryWarnings.value.length ? 'red' : 'green',
+    tone: inventoryWarnings.value.length ? 'danger' : 'safe',
+    route: { path: '/inventory', query: { stock_scope: 'warning' } }
+  },
+  {
+    key: 'prealloc-warning',
+    label: '预领用异常',
+    value: `${preallocWarnings.value.length} 项`,
+    note: '未审核生产单占用后可用量不足',
+    tag: '预领',
+    tagColor: preallocWarnings.value.length ? 'orange' : 'green',
+    tone: preallocWarnings.value.length ? 'warning' : 'safe',
+    route: { path: '/inventory', query: { stock_scope: 'prealloc_warning' } }
   }
-  if (lanConfig.prefer_remote && lanConfig.host) {
-    return `当前为 Windows 远程访问模式：${lanConfig.host}`
-  }
-  return '当前为本机数据库模式'
+])
+
+const smartTips = computed(() => {
+  const tips = []
+  if (pendingPurchases.value.length) tips.push(`有 ${pendingPurchases.value.length} 张采购单待审核，建议先确认图片和金额。`)
+  if (pendingProductions.value.length) tips.push(`有 ${pendingProductions.value.length} 张生产单待审核，审核前请查看库存校验摘要。`)
+  if (inventoryWarnings.value.length) tips.push(`有 ${inventoryWarnings.value.length} 项库存需要关注，点击库存预警可直接筛选。`)
+  if (!tips.length) tips.push('当前没有明显待办，库存与审核状态整体平稳。')
+  return tips
 })
 
 function formatFileSize(bytes) {
@@ -252,6 +247,28 @@ async function loadVersion() {
   }
 }
 
+async function loadSmartData() {
+  smartLoading.value = true
+  try {
+    const [purchaseResult, productionResult, inventoryResult] = await Promise.allSettled([
+      api.db.getPurchaseBatches({}),
+      api.db.getProductionOrders({}),
+      api.db.getInventorySummary()
+    ])
+    purchaseSnapshot.value = Array.isArray(purchaseResult.value) ? purchaseResult.value : []
+    productionSnapshot.value = Array.isArray(productionResult.value) ? productionResult.value : []
+    inventorySnapshot.value = inventoryResult.value || { materials: [], batches: [] }
+  } finally {
+    smartLoading.value = false
+  }
+}
+
+async function loadWorkspaceInfo() {
+  Object.assign(workspaceInfo, await api.db.getWorkspaceInfo())
+  if (workspaceInfo.storage_optimization_running) startOptimizeStatusPolling()
+  else stopOptimizeStatusPolling()
+}
+
 async function loadAutoLaunch() {
   try {
     const result = await api.app.getAutoLaunchSettings?.()
@@ -263,29 +280,10 @@ async function loadAutoLaunch() {
   }
 }
 
-async function loadWorkspaceInfo() {
-  Object.assign(workspaceInfo, await api.db.getWorkspaceInfo())
-  if (workspaceInfo.storage_optimization_running) {
-    startOptimizeStatusPolling()
-  } else {
-    stopOptimizeStatusPolling()
-  }
-}
-
-async function loadLanConfig() {
-  try {
-    Object.assign(lanConfig, await api.lan.getConfig?.())
-    remoteDesktopHost.value = normalizeRemoteHost(lanConfig.host || lanConfig.network.tailscale_host || '')
-  } catch (error) {
-    lanConfig.runtime.message = error.message || '远程共享状态读取失败'
-  }
-}
-
 function stopOptimizeStatusPolling() {
-  if (optimizeStatusTimer) {
-    clearInterval(optimizeStatusTimer)
-    optimizeStatusTimer = null
-  }
+  if (!optimizeStatusTimer) return
+  clearInterval(optimizeStatusTimer)
+  optimizeStatusTimer = null
 }
 
 function startOptimizeStatusPolling() {
@@ -293,112 +291,34 @@ function startOptimizeStatusPolling() {
   optimizeStatusTimer = setInterval(async () => {
     try {
       const result = await api.db.getOptimizeStorageStatus?.()
-      if (result?.workspace_info) {
-        Object.assign(workspaceInfo, result.workspace_info)
-      } else if (result) {
-        Object.assign(workspaceInfo, result)
-      }
-      if (!workspaceInfo.storage_optimization_running) {
-        stopOptimizeStatusPolling()
-      }
+      if (result?.workspace_info) Object.assign(workspaceInfo, result.workspace_info)
+      else if (result) Object.assign(workspaceInfo, result)
+      if (!workspaceInfo.storage_optimization_running) stopOptimizeStatusPolling()
     } catch {
       stopOptimizeStatusPolling()
     }
   }, 1500)
 }
 
-async function updateLanConfig(payload, successText = '') {
-  lanConfig.loading = true
+async function loadSecondaryInfo() {
   try {
-    const result = await api.lan.updateConfig(payload)
-    Object.assign(lanConfig, result || {})
-    if (successText) {
-      message.success(successText)
-    }
-  } catch (error) {
-    message.error(error.message || '更新远程共享设置失败')
-  } finally {
-    lanConfig.loading = false
+    await Promise.all([loadWorkspaceInfo(), loadAutoLaunch()])
+  } catch {
+    // 低优先级信息失败时，不阻塞智能工作台。
   }
 }
 
-async function enableRemoteShare() {
-  const preferredHost = lanConfig.network.tailscale_host || lanConfig.network.preferred_host || lanConfig.host
-  await updateLanConfig(
-    { enabled: true, host: preferredHost, prefer_remote: false },
-    '远程共享已开启，手机可通过上方地址访问同一数据库'
-  )
-}
-
-async function disableRemoteShare() {
-  await updateLanConfig({ enabled: false }, '远程共享已关闭')
-}
-
-async function useTailscaleHost() {
-  if (!lanConfig.network.tailscale_host) {
-    message.error('当前电脑未检测到 Tailscale 地址')
-    return
-  }
-  await updateLanConfig(
-    { enabled: true, host: lanConfig.network.tailscale_host, prefer_remote: false },
-    '已切换为 Tailscale 地址，手机和异地设备可优先使用这个地址访问'
-  )
-}
-
-function useCurrentTailscaleForWindowsRemote() {
-  if (!lanConfig.network.tailscale_host) {
-    message.error('当前电脑未检测到 Tailscale 地址')
-    return
-  }
-  remoteDesktopHost.value = normalizeRemoteHost(lanConfig.network.tailscale_host)
-  message.success('已填入当前 Tailscale 地址，可用于 Windows 远程访问')
-}
-
-async function enableWindowsRemoteAccess(hostOverride = '') {
-  const host = normalizeRemoteHost(hostOverride || remoteDesktopHost.value || lanConfig.host || '')
-  if (!host) {
-    message.error('请先填写主机的 Tailscale 地址')
-    return
-  }
-  lanConfig.loading = true
-  try {
-    await checkRemoteHostHealth(host)
-    setStoredRemoteHost(host)
-    const result = await api.lan.updateConfig({ enabled: false, host, prefer_remote: true })
-    Object.assign(lanConfig, result || {})
-    remoteDesktopHost.value = normalizeRemoteHost(host)
-    message.success('Windows 客户端已切换为 Tailscale 远程访问模式')
-  } catch (error) {
-    message.error(error.message || '无法连接主机，请检查 Tailscale 地址和主机状态')
-  } finally {
-    lanConfig.loading = false
-  }
-}
-
-async function disableWindowsRemoteAccess() {
-  clearStoredRemoteHost()
-  await updateLanConfig({ prefer_remote: false }, '已关闭 Windows 远程访问，恢复为本机数据库模式')
+function goWorkbench(target) {
+  if (!target?.path) return
+  router.push(target)
 }
 
 async function chooseWorkspaceDirectory() {
   try {
     const result = await api.db.chooseWorkspaceDirectory()
-    if (!result) return
-    message.success(result.message || '已更改当前工作目录，程序即将重启')
+    if (result) message.success(result.message || '已更改当前工作目录，程序即将重启')
   } catch (error) {
     message.error(error.message || '更改当前工作目录失败')
-  }
-}
-
-async function setCurrentComputerAsHost() {
-  try {
-    const result = await api.db.setCurrentComputerAsHost()
-    if (result?.message) {
-      message.success(result.message)
-    }
-    await Promise.all([loadWorkspaceInfo(), loadLanConfig()])
-  } catch (error) {
-    message.error(error.message || '设置主机失败')
   }
 }
 
@@ -449,9 +369,7 @@ async function toggleAutoLaunch() {
 async function exportDatabaseFile() {
   try {
     const result = await api.db.exportDatabaseFile?.()
-    if (result) {
-      message.success('完整数据库文件已导出')
-    }
+    if (result) message.success('完整数据库文件已导出')
   } catch (error) {
     message.error(error.message || '导出数据库失败')
   }
@@ -460,8 +378,7 @@ async function exportDatabaseFile() {
 async function importDatabaseFile() {
   try {
     const result = await api.db.importDatabaseFile?.()
-    if (!result) return
-    message.success('数据库已恢复，程序即将重启')
+    if (result) message.success('数据库已恢复，程序即将重启')
   } catch (error) {
     message.error(error.message || '恢复数据库失败')
   }
@@ -470,8 +387,7 @@ async function importDatabaseFile() {
 async function applyPatchPackage() {
   try {
     const result = await api.app.applyPatchPackage?.()
-    if (!result) return
-    message.success(`补丁已开始应用，程序将自动重启到 ${result.version}`)
+    if (result) message.success(`补丁已开始应用，程序将自动重启到 ${result.version}`)
   } catch (error) {
     message.error(error.message || '应用补丁失败')
   }
@@ -480,7 +396,8 @@ async function applyPatchPackage() {
 async function refreshPage() {
   pageRefreshing.value = true
   try {
-    await Promise.all([loadStats(), loadVersion(), loadWorkspaceInfo(), loadAutoLaunch(), loadLanConfig()])
+    await Promise.all([loadStats(), loadSmartData(), loadVersion()])
+    loadSecondaryInfo()
     message.success('已刷新')
   } catch (error) {
     message.error(error.message || '刷新首页失败')
@@ -491,7 +408,8 @@ async function refreshPage() {
 
 onMounted(async () => {
   try {
-    await Promise.all([loadStats(), loadVersion(), loadWorkspaceInfo(), loadAutoLaunch(), loadLanConfig()])
+    await Promise.all([loadStats(), loadVersion(), loadSmartData()])
+    window.setTimeout(loadSecondaryInfo, 80)
   } catch (error) {
     message.error(error.message || '加载经营总览失败')
   }
@@ -501,3 +419,172 @@ onUnmounted(() => {
   stopOptimizeStatusPolling()
 })
 </script>
+
+<style scoped>
+.dashboard-workbench {
+  display: grid;
+  gap: 18px;
+}
+
+.smart-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 24px;
+  border: 1px solid rgba(154, 190, 255, 0.38);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(0, 122, 255, 0.16), transparent 30%),
+    linear-gradient(135deg, #ffffff 0%, #f3f9ff 100%);
+}
+
+.smart-hero__eyebrow {
+  margin-bottom: 6px;
+  color: #007aff;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.smart-hero h1 {
+  margin: 0;
+  color: #10233f;
+  font-size: 30px;
+  line-height: 1.2;
+}
+
+.smart-hero p {
+  max-width: 760px;
+  margin: 8px 0 0;
+  color: #5b6b80;
+  line-height: 1.7;
+}
+
+.smart-hero__actions,
+.dashboard-actions--compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.smart-stat-card {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.workbench-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
+  gap: 18px;
+}
+
+.workbench-grid--bottom {
+  align-items: start;
+}
+
+.smart-task-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.smart-task-card {
+  min-height: 148px;
+  padding: 16px;
+  border: 1px solid #dce9fb;
+  border-radius: 20px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.16s ease, border-color 0.16s ease;
+}
+
+.smart-task-card:hover {
+  transform: translateY(-2px);
+  border-color: #99c7ff;
+}
+
+.smart-task-card--danger {
+  background: linear-gradient(180deg, #fff8f8 0%, #fff 100%);
+}
+
+.smart-task-card--warning {
+  background: linear-gradient(180deg, #fffaf0 0%, #fff 100%);
+}
+
+.smart-task-card--safe {
+  background: linear-gradient(180deg, #f4fff9 0%, #fff 100%);
+}
+
+.smart-task-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #536982;
+  font-weight: 700;
+}
+
+.smart-task-card strong {
+  display: block;
+  margin-top: 14px;
+  color: #10233f;
+  font-size: 30px;
+}
+
+.smart-task-card p {
+  margin: 8px 0 0;
+  color: #6a7d96;
+  line-height: 1.55;
+}
+
+.quick-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.smart-tip-box {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 18px;
+  background: #f4f9ff;
+  border: 1px solid #dce9fb;
+}
+
+.smart-tip-box__title {
+  margin-bottom: 8px;
+  color: #143255;
+  font-weight: 800;
+}
+
+.smart-tip-box__line {
+  color: #5b6b80;
+  line-height: 1.7;
+}
+
+.workspace-desc {
+  margin-top: 16px;
+}
+
+@media (max-width: 1100px) {
+  .smart-hero,
+  .workbench-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .smart-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 760px) {
+  .smart-task-grid,
+  .quick-action-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

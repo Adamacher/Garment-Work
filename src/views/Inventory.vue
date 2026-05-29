@@ -74,6 +74,11 @@
     <div class="erp-table-caption">
       {{ TEXT.searchHelp }}
     </div>
+    <div v-if="activeInventoryFilterChips.length" class="smart-filter-bar">
+      <span class="smart-filter-bar__label">当前筛选</span>
+      <a-tag v-for="chip in activeInventoryFilterChips" :key="chip" color="blue">{{ chip }}</a-tag>
+      <a-button size="small" @click="clearInventoryFilters">清空筛选</a-button>
+    </div>
 
     <a-card class="content-card" :bordered="false">
       <template #title>{{ TEXT.summarySection }}</template>
@@ -480,6 +485,7 @@
 
 <script setup>
 import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import HoverImageThumb from '../components/HoverImageThumb.vue'
 import PageSummaryStrip from '../components/PageSummaryStrip.vue'
@@ -490,6 +496,7 @@ import { useMobileLayout } from '../composables/useMobileLayout'
 import { useDebouncedInput } from '../composables/useDebouncedInput'
 
 const { isMobileLayout } = useMobileLayout()
+const route = useRoute()
 
 const TEXT = {
   title: '库存台账',
@@ -676,7 +683,7 @@ function loadStoredViewState() {
     filters.supplier = typeof parsed.supplier === 'string' && parsed.supplier.trim() ? parsed.supplier : undefined
     filters.factory = typeof parsed.factory === 'string' && parsed.factory.trim() ? parsed.factory : undefined
     filters.category = typeof parsed.category === 'string' && parsed.category.trim() ? parsed.category : undefined
-    filters.stockScope = ['all', 'warehouse', 'factory'].includes(parsed.stockScope) ? parsed.stockScope : 'all'
+    filters.stockScope = ['all', 'warehouse', 'factory', 'warning', 'prealloc_warning'].includes(parsed.stockScope) ? parsed.stockScope : 'all'
     materialCurrentPage.value = Number(parsed.materialCurrentPage || 1)
     materialPageSize.value = Number(parsed.materialPageSize || 12)
     transitCurrentPage.value = Number(parsed.transitCurrentPage || 1)
@@ -686,6 +693,27 @@ function loadStoredViewState() {
   } catch {
     searchValue.value = ''
   }
+  applyRouteQueryFilters()
+}
+
+function applyRouteQueryFilters(query = route.query || {}) {
+  const scope = String(query.stock_scope || query.stockScope || '')
+  if (['all', 'warehouse', 'factory', 'warning', 'prealloc_warning'].includes(scope)) {
+    filters.stockScope = scope
+  }
+  if (query.q) searchValue.value = String(query.q)
+}
+
+function clearInventoryFilters() {
+  searchValue.value = ''
+  filters.searchField = 'keyword'
+  filters.supplier = undefined
+  filters.factory = undefined
+  filters.category = undefined
+  filters.stockScope = 'all'
+  materialCurrentPage.value = 1
+  transitCurrentPage.value = 1
+  batchCurrentPage.value = 1
 }
 
 function saveStoredViewState() {
@@ -780,7 +808,9 @@ const searchFieldOptions = [
 const stockScopeOptions = [
   { label: '全部库存', value: 'all' },
   { label: '只看仓库库存', value: 'warehouse' },
-  { label: '只看工厂库存', value: 'factory' }
+  { label: '只看工厂库存', value: 'factory' },
+  { label: '库存预警', value: 'warning' },
+  { label: '预领用异常', value: 'prealloc_warning' }
 ]
 
 const searchPlaceholderText = computed(() => {
@@ -890,6 +920,24 @@ function qtyToneClass(value) {
   return Number(value || 0) < -0.0001 ? 'erp-number--negative' : ''
 }
 
+const stockScopeLabelMap = {
+  all: '全部库存',
+  warehouse: '只看仓库库存',
+  factory: '只看工厂库存',
+  warning: '库存预警',
+  prealloc_warning: '预领用异常'
+}
+
+const activeInventoryFilterChips = computed(() => {
+  const chips = []
+  if (searchValue.value) chips.push(`关键词：${searchValue.value}`)
+  if (filters.supplier) chips.push(`供应商：${filters.supplier}`)
+  if (filters.factory) chips.push(`工厂：${filters.factory}`)
+  if (filters.category) chips.push(`分类：${filters.category}`)
+  if (filters.stockScope !== 'all') chips.push(stockScopeLabelMap[filters.stockScope] || filters.stockScope)
+  return chips
+})
+
 function normalizeSearchSource(item) {
   return {
     keyword: [
@@ -940,6 +988,14 @@ function filterRows(rows) {
     if (filters.stockScope === 'factory') {
       const factoryQty = Number(item.factory_remaining_qty ?? item.factory_remaining ?? 0)
       if (factoryQty <= 0.0001) return false
+    }
+    if (filters.stockScope === 'warning') {
+      const availableQty = Number(item.available_after_prealloc_qty ?? item.current_stock_qty ?? item.remaining_qty ?? 0)
+      const factoryAvailableQty = Number(item.factory_available_after_prealloc_qty ?? item.factory_remaining_qty ?? item.factory_remaining ?? 0)
+      if (availableQty >= -0.0001 && factoryAvailableQty >= -0.0001 && Number(item.current_stock_qty ?? item.remaining_qty ?? 0) > 0.0001) return false
+    }
+    if (filters.stockScope === 'prealloc_warning') {
+      if (!(Number(item.pre_allocated_qty || 0) > 0 && Number(item.available_after_prealloc_qty || 0) < -0.0001)) return false
     }
     return true
   })
@@ -1096,6 +1152,14 @@ onMounted(loadInventory)
 onActivated(() => {
   if (!loading.value) loadInventory()
 })
+
+watch(
+  () => route.query,
+  (query) => {
+    applyRouteQueryFilters(query)
+  },
+  { deep: true }
+)
 
 watch(
   [

@@ -58,6 +58,11 @@
       <div class="erp-table-caption">
         支持按加工厂、生产状态、单据状态和异常损耗快速筛单；草稿阶段可先建单，提交后再按真实库存校验。
       </div>
+      <div v-if="activeProductionFilterChips.length" class="smart-filter-bar">
+        <span class="smart-filter-bar__label">当前筛选</span>
+        <a-tag v-for="chip in activeProductionFilterChips" :key="chip" color="cyan">{{ chip }}</a-tag>
+        <a-button size="small" @click="clearProductionFilters">清空筛选</a-button>
+      </div>
 
     <div v-if="isMobileLayout" class="erp-mobile-list">
       <div
@@ -299,6 +304,35 @@
             <a-col :span="8"><a-form-item label="裁床日期"><a-date-picker v-model:value="cutDate" value-format="YYYY-MM-DD" style="width: 100%" /></a-form-item></a-col>
             <a-col :span="8"><a-form-item label="出货日期"><a-date-picker v-model:value="completedDate" value-format="YYYY-MM-DD" style="width: 100%" /></a-form-item></a-col>
           </a-row>
+
+          <div v-if="!viewMode && materialRows.length" class="smart-check-panel">
+            <div class="smart-check-panel__head">
+              <div>
+                <div class="smart-check-panel__title">智能校验摘要</div>
+                <div class="smart-check-panel__desc">保存或审核前，先看库存、预领用和成本是否有异常。</div>
+              </div>
+              <a-tag :color="productionSmartSummary.warningCount ? 'red' : 'green'">
+                {{ productionSmartSummary.warningCount ? `${productionSmartSummary.warningCount} 项需关注` : '库存状态正常' }}
+              </a-tag>
+            </div>
+            <div class="smart-check-panel__grid">
+              <div class="smart-check-panel__item">
+                <span>原料项</span>
+                <strong>{{ productionSmartSummary.totalRows }}</strong>
+              </div>
+              <div class="smart-check-panel__item">
+                <span>预计原料总额</span>
+                <strong>{{ formatMoney(productionSmartSummary.totalAmount, 2) }}</strong>
+              </div>
+              <div class="smart-check-panel__item">
+                <span>可自动调取</span>
+                <strong>{{ productionSmartSummary.autoTransferCount }}</strong>
+              </div>
+            </div>
+            <div v-if="productionSmartSummary.warnings.length" class="smart-check-panel__warnings">
+              <div v-for="warning in productionSmartSummary.warnings" :key="warning">{{ warning }}</div>
+            </div>
+          </div>
 
           <div class="section-caption" style="margin-bottom: 10px;">
             <div>
@@ -625,6 +659,7 @@
 
 <script setup>
 import { computed, nextTick, onActivated, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import dayjs from 'dayjs'
 import { message, Modal } from 'ant-design-vue'
 import InlineOptionSelect from '@/components/InlineOptionSelect.vue'
@@ -637,6 +672,7 @@ import { api, formatMoney } from '@/utils/api'
 import { convertQuantity, convertUnitPrice, normalizeUnit } from '@/utils/material'
 
 const { inputValue: keywordInput, debouncedValue: keyword } = useDebouncedInput('', 260)
+const route = useRoute()
 const productionViewStateStorageKey = 'production.view.state'
 const { isMobileLayout } = useMobileLayout()
 const factoryFilter = ref(undefined)
@@ -971,6 +1007,31 @@ const summaryItems = computed(() => {
   ]
 })
 
+const activeProductionFilterChips = computed(() => {
+  const chips = []
+  if (keywordInput.value) chips.push(`关键词：${keywordInput.value}`)
+  if (factoryFilter.value) chips.push(`加工厂：${factoryFilter.value}`)
+  if (statusFilter.value) chips.push(`生产状态：${statusFilter.value}`)
+  if (documentStatusFilter.value) chips.push(`单据：${documentStatusLabel(documentStatusFilter.value)}`)
+  if (onlyWarnings.value) chips.push('仅看异常')
+  if (dateRange.value?.filter(Boolean).length) chips.push(`日期：${dateRange.value.filter(Boolean).join(' 至 ')}`)
+  return chips
+})
+
+const productionSmartSummary = computed(() => {
+  const rows = materialRows.value || []
+  const warnings = rows.map((row) => getRowInventoryWarning(row)).filter(Boolean)
+  const totalAmount = rows.reduce((sum, row) => sum + Number(getRowActualTotalAmount(row) || 0), 0)
+  const autoTransferCount = warnings.filter((warning) => String(warning).includes('工厂剩余量不足')).length
+  return {
+    totalRows: rows.length,
+    totalAmount,
+    warningCount: warnings.length,
+    autoTransferCount,
+    warnings: warnings.slice(0, 4)
+  }
+})
+
 function loadStoredViewState() {
   try {
     const parsed = JSON.parse(localStorage.getItem(productionViewStateStorageKey) || '{}')
@@ -986,6 +1047,27 @@ function loadStoredViewState() {
       : 'created_at'
     sortOrder.value = parsed.sortOrder === 'asc' ? 'asc' : 'desc'
   } catch {}
+  applyRouteQueryFilters()
+}
+
+function applyRouteQueryFilters(query = route.query || {}) {
+  if (query.document_status) documentStatusFilter.value = String(query.document_status)
+  if (query.status) statusFilter.value = String(query.status)
+  if (query.factory) factoryFilter.value = String(query.factory)
+  if (query.q) keywordInput.value = String(query.q)
+  if (query.only_warnings === '1') onlyWarnings.value = true
+  if (query.action === 'create' && !visible.value) {
+    window.setTimeout(() => openCreate(), 0)
+  }
+}
+
+function clearProductionFilters() {
+  keywordInput.value = ''
+  factoryFilter.value = undefined
+  statusFilter.value = undefined
+  documentStatusFilter.value = undefined
+  dateRange.value = []
+  onlyWarnings.value = false
 }
 
 function saveStoredViewState() {
@@ -2425,6 +2507,14 @@ watch([keyword, factoryFilter, statusFilter, documentStatusFilter, dateRange, lo
   scheduleListReload(80)
 })
 
+watch(
+  () => route.query,
+  (query) => {
+    applyRouteQueryFilters(query)
+  },
+  { deep: true }
+)
+
 watch([keywordInput, factoryFilter, statusFilter, documentStatusFilter, dateRange, lossThresholdPercent, onlyWarnings, sortField, sortOrder], () => {
   saveStoredViewState()
 }, { deep: true })
@@ -2437,6 +2527,67 @@ watch([keywordInput, factoryFilter, statusFilter, documentStatusFilter, dateRang
   border: 1px solid #e7edf7;
   border-radius: 14px;
   background: linear-gradient(180deg, #f8fbff 0%, #fdfefe 100%);
+}
+
+.smart-check-panel {
+  margin: 14px 0 18px;
+  padding: 16px;
+  border: 1px solid #dbeafe;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+
+.smart-check-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.smart-check-panel__title {
+  color: #123152;
+  font-weight: 800;
+}
+
+.smart-check-panel__desc {
+  margin-top: 4px;
+  color: #6b7f99;
+  font-size: 13px;
+}
+
+.smart-check-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.smart-check-panel__item {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid #e5eefb;
+}
+
+.smart-check-panel__item span {
+  display: block;
+  color: #6b7f99;
+  font-size: 12px;
+}
+
+.smart-check-panel__item strong {
+  display: block;
+  margin-top: 4px;
+  color: #10233f;
+  font-size: 18px;
+}
+
+.smart-check-panel__warnings {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  color: #cf1322;
+  font-weight: 600;
 }
 
 .detail-top-panel__grid {

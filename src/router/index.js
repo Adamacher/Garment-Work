@@ -24,19 +24,19 @@ const routes = [
     path: '/',
     component: MainLayout,
     children: [
-      { path: 'dashboard', component: Dashboard, meta: { feature: 'dashboard', keepAlive: true } },
-      { path: 'material', component: Material, meta: { feature: 'material', keepAlive: true } },
-      { path: 'purchase', component: Purchase, meta: { feature: 'purchase', keepAlive: true } },
-      { path: 'inventory', component: Inventory, meta: { feature: 'inventory', keepAlive: true } },
-      { path: 'inventory-flow', component: InventoryFlow, meta: { feature: 'inventory_flow', keepAlive: true } },
-      { path: 'factory-dispatch', component: FactoryDispatch, meta: { feature: 'inventory', keepAlive: true } },
-      { path: 'style', component: Style, meta: { feature: 'style', keepAlive: true } },
-      { path: 'bom', component: Bom, meta: { feature: 'bom', keepAlive: true } },
-      { path: 'production', component: Production, meta: { feature: 'production', keepAlive: true } },
-      { path: 'consumption', component: Consumption, meta: { feature: 'consumption', keepAlive: true } },
-      { path: 'options', component: Options, meta: { feature: 'options', keepAlive: true } },
-      { path: 'users', component: Users, meta: { feature: 'users', keepAlive: true } },
-      { path: 'audit', component: Audit, meta: { feature: 'audit', keepAlive: true } }
+      { path: 'dashboard', component: Dashboard, meta: { feature: 'dashboard' } },
+      { path: 'material', component: Material, meta: { feature: 'material' } },
+      { path: 'purchase', component: Purchase, meta: { feature: 'purchase' } },
+      { path: 'inventory', component: Inventory, meta: { feature: 'inventory' } },
+      { path: 'inventory-flow', component: InventoryFlow, meta: { feature: 'inventory_flow' } },
+      { path: 'factory-dispatch', component: FactoryDispatch, meta: { feature: 'inventory' } },
+      { path: 'style', component: Style, meta: { feature: 'style' } },
+      { path: 'bom', component: Bom, meta: { feature: 'bom' } },
+      { path: 'production', component: Production, meta: { feature: 'production' } },
+      { path: 'consumption', component: Consumption, meta: { feature: 'consumption' } },
+      { path: 'options', component: Options, meta: { feature: 'options' } },
+      { path: 'users', component: Users, meta: { feature: 'users' } },
+      { path: 'audit', component: Audit, meta: { feature: 'audit' } }
     ]
   }
 ]

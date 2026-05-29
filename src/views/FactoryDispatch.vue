@@ -439,6 +439,7 @@
 
 <script setup>
 import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import HoverImageThumb from '../components/HoverImageThumb.vue'
 import MobileFilterPanel from '../components/MobileFilterPanel.vue'
@@ -448,6 +449,7 @@ import { api, formatMoney, toSelectOptions } from '../utils/api'
 import { useDebouncedInput } from '../composables/useDebouncedInput'
 
 const { isMobileLayout } = useMobileLayout()
+const route = useRoute()
 
 function getPopupContainer(node) {
   return node?.closest?.('.ant-modal-root, .ant-modal-wrap, .erp-page') || document.body
@@ -576,6 +578,13 @@ function loadStoredViewState() {
     currentPage.value = 1
     pageSize.value = 12
   }
+  applyRouteQueryFilters()
+}
+
+function applyRouteQueryFilters(query = route.query || {}) {
+  const scope = String(query.stock_scope || query.stockScope || '')
+  if (['all', 'warehouse', 'factory'].includes(scope)) stockScopeFilter.value = scope
+  if (query.q) keywordInput.value = String(query.q)
 }
 
 function saveStoredViewState() {
@@ -989,6 +998,15 @@ onActivated(() => {
 watch([filterField, keywordInput, supplierFilter, factoryFilter, stockScopeFilter, dateRange], () => {
   currentPage.value = 1
 })
+
+watch(
+  () => route.query,
+  (query) => {
+    applyRouteQueryFilters(query)
+    currentPage.value = 1
+  },
+  { deep: true }
+)
 
 watch([filteredRows, pageSize], () => {
   const totalPages = Math.max(1, Math.ceil(filteredRows.value.length / Math.max(Number(pageSize.value || 12), 1)))

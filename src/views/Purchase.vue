@@ -125,6 +125,11 @@
       <div class="erp-table-caption">
         同一供应商、同一采购单下的多条原料会归并成一张采购单显示；筛选条件会先精确收口，再在结果范围内检索。
       </div>
+      <div v-if="activePurchaseFilterChips.length" class="smart-filter-bar">
+        <span class="smart-filter-bar__label">当前筛选</span>
+        <a-tag v-for="chip in activePurchaseFilterChips" :key="chip" color="blue">{{ chip }}</a-tag>
+        <a-button size="small" @click="clearPurchaseFilters">清空筛选</a-button>
+      </div>
 
       <div v-if="isMobileLayout" class="erp-mobile-list">
         <div
@@ -675,6 +680,7 @@
 
 <script setup>
 import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import ColumnConfigButton from '@/components/ColumnConfigButton.vue'
 import InlineOptionSelect from '@/components/InlineOptionSelect.vue'
@@ -687,6 +693,7 @@ import { api, formatMoney } from '@/utils/api'
 import { convertQuantity, normalizeUnit } from '@/utils/material'
 
 const { inputValue: keywordInput, debouncedValue: keyword } = useDebouncedInput('', 260)
+const route = useRoute()
 const supplierFilter = ref(undefined)
 const materialCategoryFilter = ref(undefined)
 const documentStatusFilter = ref(undefined)
@@ -1079,6 +1086,16 @@ const summaryItems = computed(() => {
   ]
 })
 
+const activePurchaseFilterChips = computed(() => {
+  const chips = []
+  if (keywordInput.value) chips.push(`关键词：${keywordInput.value}`)
+  if (supplierFilter.value) chips.push(`供应商：${supplierFilter.value}`)
+  if (materialCategoryFilter.value) chips.push(`分类：${materialCategoryFilter.value}`)
+  if (documentStatusFilter.value) chips.push(`单据：${documentStatusLabel(documentStatusFilter.value)}`)
+  if (dateRange.value?.filter(Boolean).length) chips.push(`日期：${dateRange.value.filter(Boolean).join(' 至 ')}`)
+  return chips
+})
+
 function loadStoredViewState() {
   try {
     const parsed = JSON.parse(localStorage.getItem(purchaseViewStateStorageKey) || '{}')
@@ -1097,6 +1114,27 @@ function loadStoredViewState() {
     purchaseCurrentPage.value = Number(parsed.purchaseCurrentPage || 1)
     purchasePageSize.value = purchasePageSizeOptions.includes(Number(parsed.purchasePageSize)) ? Number(parsed.purchasePageSize) : 12
   } catch {}
+  applyRouteQueryFilters()
+}
+
+function applyRouteQueryFilters(query = route.query || {}) {
+  if (query.document_status) documentStatusFilter.value = String(query.document_status)
+  if (query.q) keywordInput.value = String(query.q)
+  if (query.field && ['keyword', 'supplier', 'purchase_order_no', 'color', 'remark'].includes(String(query.field))) {
+    filterField.value = String(query.field)
+  }
+  if (query.action === 'create' && !visible.value) {
+    window.setTimeout(() => openCreate(), 0)
+  }
+}
+
+function clearPurchaseFilters() {
+  keywordInput.value = ''
+  supplierFilter.value = undefined
+  materialCategoryFilter.value = undefined
+  documentStatusFilter.value = undefined
+  dateRange.value = []
+  purchaseCurrentPage.value = 1
 }
 
 function saveStoredViewState() {
@@ -2385,6 +2423,15 @@ watch([filterField, keyword, supplierFilter, materialCategoryFilter, documentSta
   purchaseCurrentPage.value = 1
   scheduleListReload(80)
 })
+
+watch(
+  () => route.query,
+  (query) => {
+    applyRouteQueryFilters(query)
+    purchaseCurrentPage.value = 1
+  },
+  { deep: true }
+)
 
 watch([filterField, keywordInput, supplierFilter, materialCategoryFilter, documentStatusFilter, dateRange, sortField, sortOrder, purchaseCurrentPage, purchasePageSize], () => {
   saveStoredViewState()

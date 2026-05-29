@@ -43,6 +43,44 @@ body {
   color: var(--ems-text);
 }
 
+.smart-filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -4px 0 16px;
+  padding: 10px 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+
+.smart-filter-bar__label {
+  color: #536982;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.content-card,
+.erp-table-wrap,
+.ant-modal-content,
+.ant-drawer-content,
+.ems-topbar,
+.ems-sidebar {
+  backdrop-filter: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
 .erp-page {
   color: var(--ems-text);
 }
