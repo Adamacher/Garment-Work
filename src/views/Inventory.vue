@@ -80,7 +80,20 @@
       <a-button size="small" @click="clearInventoryFilters">清空筛选</a-button>
     </div>
 
-    <a-card class="content-card" :bordered="false">
+    <div class="inventory-view-switch">
+      <button
+        v-for="item in ledgerSectionOptions"
+        :key="item.value"
+        type="button"
+        :class="['inventory-view-switch__item', { 'inventory-view-switch__item--active': activeLedgerSection === item.value }]"
+        @click="activeLedgerSection = item.value"
+      >
+        <span>{{ item.label }}</span>
+        <strong>{{ item.count }}</strong>
+      </button>
+    </div>
+
+    <a-card v-if="activeLedgerSection === 'summary'" class="content-card inventory-ledger-card" :bordered="false">
       <template #title>{{ TEXT.summarySection }}</template>
       <template #extra>
         <ColumnConfigButton
@@ -91,7 +104,7 @@
       </template>
 
       <div v-if="isMobileLayout" class="erp-mobile-list">
-        <div v-for="row in pagedMaterials" :key="materialRowKey(row)" class="erp-mobile-card">
+        <div v-for="row in pagedMaterials" :key="materialRowKey(row)" class="erp-mobile-card inventory-clickable-row" @click="openInventoryDetail(row)">
           <div class="erp-mobile-card__head">
             <div>
               <div class="erp-mobile-card__title">{{ row.material_code || '-' }}</div>
@@ -170,7 +183,7 @@
             </tr>
           </thead>
           <tbody v-if="pagedMaterials.length">
-            <tr v-for="row in pagedMaterials" :key="materialRowKey(row)">
+            <tr v-for="row in pagedMaterials" :key="materialRowKey(row)" class="inventory-clickable-row" @click="openInventoryDetail(row)">
               <td v-for="column in materialColumns" :key="column.key">
                 <template v-if="column.key === 'image'">
                   <HoverImageThumb
@@ -240,7 +253,7 @@
       </div>
     </a-card>
 
-    <a-card class="content-card" :bordered="false">
+    <a-card v-if="activeLedgerSection === 'transit'" class="content-card inventory-ledger-card" :bordered="false">
       <template #title>{{ TEXT.transitSection }}</template>
       <template #extra>
         <ColumnConfigButton
@@ -352,7 +365,7 @@
       </div>
     </a-card>
 
-    <a-card class="content-card" :bordered="false">
+    <a-card v-if="activeLedgerSection === 'batch'" class="content-card inventory-ledger-card" :bordered="false">
       <template #title>{{ TEXT.batchSection }}</template>
       <template #extra>
         <ColumnConfigButton
@@ -480,12 +493,85 @@
         />
       </div>
     </a-card>
+
+    <a-drawer
+      v-model:open="inventoryDetailOpen"
+      class="inventory-detail-drawer"
+      placement="right"
+      width="520"
+      :title="selectedInventoryRow ? `${selectedInventoryRow.material_code || '-'} 库存详情` : '库存详情'"
+    >
+      <div v-if="selectedInventoryRow" class="inventory-detail">
+        <div class="inventory-detail__hero">
+          <HoverImageThumb
+            :src="selectedInventoryRow.material_image_path || selectedInventoryRow.image_path"
+            :alt="selectedInventoryRow.material_name || selectedInventoryRow.material_code"
+            empty-text=""
+          />
+          <div>
+            <div class="inventory-detail__title">{{ selectedInventoryRow.material_code || '-' }}</div>
+            <div class="inventory-detail__sub">{{ selectedInventoryRow.material_name || '-' }}</div>
+            <div class="inventory-detail__tags">
+              <a-tag color="blue">{{ formatColorWithSize(selectedInventoryRow) }}</a-tag>
+              <a-tag>{{ selectedInventoryRow.supplier_name || '-' }}</a-tag>
+              <a-tag>{{ selectedInventoryRow.category || '-' }}</a-tag>
+            </div>
+          </div>
+        </div>
+
+        <div class="inventory-detail__stats">
+          <div v-for="item in selectedInventoryStats" :key="item.label" class="inventory-detail__stat">
+            <span>{{ item.label }}</span>
+            <strong :class="item.className">{{ item.value }}</strong>
+          </div>
+        </div>
+
+        <div class="inventory-detail__actions">
+          <a-button type="primary" @click="goInventoryFlow(selectedInventoryRow)">去出仓入仓</a-button>
+          <a-button @click="goPurchaseWithMaterial(selectedInventoryRow)">查看采购批次</a-button>
+        </div>
+
+        <section class="inventory-detail__section">
+          <h3>批次明细</h3>
+          <div v-if="selectedInventoryBatches.length" class="inventory-detail-list">
+            <div v-for="batch in selectedInventoryBatches" :key="batchRowKey(batch)" class="inventory-detail-list__item">
+              <div>
+                <strong>{{ batch.batch_no || '-' }}</strong>
+                <p>{{ batch.purchase_order_no || '-' }} / {{ formatDate(batch.received_at) }}</p>
+              </div>
+              <div class="inventory-detail-list__qty">
+                <span>批次剩余 {{ formatQtyWithUnit(batch.remaining_qty, batch.base_unit) }}</span>
+                <span>仓库 {{ formatQtyWithUnit(batch.warehouse_remaining, batch.base_unit) }}</span>
+                <span>工厂 {{ formatQtyWithUnit(batch.factory_remaining, batch.base_unit) }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-else class="erp-empty-cell">暂无批次明细</div>
+        </section>
+
+        <section class="inventory-detail__section">
+          <h3>采购在途</h3>
+          <div v-if="selectedInventoryTransit.length" class="inventory-detail-list">
+            <div v-for="item in selectedInventoryTransit" :key="transitRowKey(item)" class="inventory-detail-list__item">
+              <div>
+                <strong>{{ item.purchase_order_no || '-' }}</strong>
+                <p>{{ item.supplier_name || '-' }} / {{ formatDate(item.arrival_date) }}</p>
+              </div>
+              <div class="inventory-detail-list__qty">
+                <span>{{ formatDisplayQtyText(item.actual_display_text || item.actual_display_qty, item.actual_display_unit) }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-else class="erp-empty-cell">暂无采购在途</div>
+        </section>
+      </div>
+    </a-drawer>
   </section>
 </template>
 
 <script setup>
 import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import HoverImageThumb from '../components/HoverImageThumb.vue'
 import PageSummaryStrip from '../components/PageSummaryStrip.vue'
@@ -497,6 +583,7 @@ import { useDebouncedInput } from '../composables/useDebouncedInput'
 
 const { isMobileLayout } = useMobileLayout()
 const route = useRoute()
+const router = useRouter()
 
 const TEXT = {
   title: '库存台账',
@@ -566,6 +653,9 @@ const filters = reactive({
   stockScope: 'all'
 })
 
+const activeLedgerSection = ref('summary')
+const inventoryDetailOpen = ref(false)
+const selectedInventoryRow = ref(null)
 const materialCurrentPage = ref(1)
 const materialPageSize = ref(12)
 const transitCurrentPage = ref(1)
@@ -636,18 +726,55 @@ const batchColumnDefs = [
   { key: 'received_at', title: TEXT.arrivalDate }
 ]
 
+const materialDefaultColumnKeys = [
+  'image',
+  'material_code',
+  'material_name',
+  'color',
+  'supplier_name',
+  'factory_name',
+  'current_stock',
+  'pre_allocated',
+  'available_after_prealloc',
+  'latest_received_at'
+]
+const transitDefaultColumnKeys = [
+  'image',
+  'purchase_order_no',
+  'material_code',
+  'color',
+  'supplier_name',
+  'actual_display_qty',
+  'arrival_date'
+]
+const batchDefaultColumnKeys = [
+  'batch_no',
+  'purchase_order_no',
+  'material_code',
+  'color',
+  'supplier_name',
+  'factory_name',
+  'remaining_qty',
+  'warehouse_remaining',
+  'factory_remaining',
+  'received_at'
+]
+
 function getPopupContainer(node) {
   return node?.closest?.('.erp-page') || document.body
 }
 
-function loadStoredColumnKeys(storageKey, columns) {
+function loadStoredColumnKeys(storageKey, columns, defaultKeys) {
   const allKeys = columns.map((column) => column.key)
+  const fallbackKeys = Array.isArray(defaultKeys) && defaultKeys.length
+    ? defaultKeys.filter((key) => allKeys.includes(key))
+    : allKeys
   try {
     const parsed = JSON.parse(localStorage.getItem(storageKey) || '[]')
     const selected = Array.isArray(parsed) ? parsed.filter((key) => allKeys.includes(key)) : []
-    return selected.length ? selected : allKeys
+    return selected.length ? selected : fallbackKeys
   } catch {
-    return allKeys
+    return fallbackKeys
   }
 }
 
@@ -665,13 +792,13 @@ function persistColumnKeys(storageKey, keysRef) {
   )
 }
 
-const materialVisibleKeys = ref(loadStoredColumnKeys('inventory.material.columns', materialColumnDefs))
-const transitVisibleKeys = ref(loadStoredColumnKeys('inventory.transit.columns', transitColumnDefs))
-const batchVisibleKeys = ref(loadStoredColumnKeys('inventory.batch.columns', batchColumnDefs))
+const materialVisibleKeys = ref(loadStoredColumnKeys('inventory.material.columns.v2', materialColumnDefs, materialDefaultColumnKeys))
+const transitVisibleKeys = ref(loadStoredColumnKeys('inventory.transit.columns.v2', transitColumnDefs, transitDefaultColumnKeys))
+const batchVisibleKeys = ref(loadStoredColumnKeys('inventory.batch.columns.v2', batchColumnDefs, batchDefaultColumnKeys))
 
-persistColumnKeys('inventory.material.columns', materialVisibleKeys)
-persistColumnKeys('inventory.transit.columns', transitVisibleKeys)
-persistColumnKeys('inventory.batch.columns', batchVisibleKeys)
+persistColumnKeys('inventory.material.columns.v2', materialVisibleKeys)
+persistColumnKeys('inventory.transit.columns.v2', transitVisibleKeys)
+persistColumnKeys('inventory.batch.columns.v2', batchVisibleKeys)
 
 function loadStoredViewState() {
   try {
@@ -683,7 +810,7 @@ function loadStoredViewState() {
     filters.supplier = typeof parsed.supplier === 'string' && parsed.supplier.trim() ? parsed.supplier : undefined
     filters.factory = typeof parsed.factory === 'string' && parsed.factory.trim() ? parsed.factory : undefined
     filters.category = typeof parsed.category === 'string' && parsed.category.trim() ? parsed.category : undefined
-    filters.stockScope = ['all', 'warehouse', 'factory', 'warning', 'prealloc_warning'].includes(parsed.stockScope) ? parsed.stockScope : 'all'
+    filters.stockScope = ['all', 'warehouse', 'factory', 'prealloc_warning'].includes(parsed.stockScope) ? parsed.stockScope : 'all'
     materialCurrentPage.value = Number(parsed.materialCurrentPage || 1)
     materialPageSize.value = Number(parsed.materialPageSize || 12)
     transitCurrentPage.value = Number(parsed.transitCurrentPage || 1)
@@ -698,7 +825,7 @@ function loadStoredViewState() {
 
 function applyRouteQueryFilters(query = route.query || {}) {
   const scope = String(query.stock_scope || query.stockScope || '')
-  if (['all', 'warehouse', 'factory', 'warning', 'prealloc_warning'].includes(scope)) {
+  if (['all', 'warehouse', 'factory', 'prealloc_warning'].includes(scope)) {
     filters.stockScope = scope
   }
   if (query.q) searchValue.value = String(query.q)
@@ -742,9 +869,14 @@ function saveStoredViewState() {
 
 loadStoredViewState()
 
-const materialColumns = computed(() => materialColumnDefs.filter((column) => materialVisibleKeys.value.includes(column.key)))
-const transitColumns = computed(() => transitColumnDefs.filter((column) => transitVisibleKeys.value.includes(column.key)))
-const batchColumns = computed(() => batchColumnDefs.filter((column) => batchVisibleKeys.value.includes(column.key)))
+function buildOrderedColumns(columnDefs, visibleKeys) {
+  const map = new Map(columnDefs.map((column) => [column.key, column]))
+  return visibleKeys.map((key) => map.get(key)).filter(Boolean)
+}
+
+const materialColumns = computed(() => buildOrderedColumns(materialColumnDefs, materialVisibleKeys.value))
+const transitColumns = computed(() => buildOrderedColumns(transitColumnDefs, transitVisibleKeys.value))
+const batchColumns = computed(() => buildOrderedColumns(batchColumnDefs, batchVisibleKeys.value))
 
 function normalizeFilterText(value) {
   return String(value || '').trim()
@@ -809,7 +941,6 @@ const stockScopeOptions = [
   { label: '全部库存', value: 'all' },
   { label: '只看仓库库存', value: 'warehouse' },
   { label: '只看工厂库存', value: 'factory' },
-  { label: '库存预警', value: 'warning' },
   { label: '预领用异常', value: 'prealloc_warning' }
 ]
 
@@ -924,7 +1055,6 @@ const stockScopeLabelMap = {
   all: '全部库存',
   warehouse: '只看仓库库存',
   factory: '只看工厂库存',
-  warning: '库存预警',
   prealloc_warning: '预领用异常'
 }
 
@@ -989,11 +1119,6 @@ function filterRows(rows) {
       const factoryQty = Number(item.factory_remaining_qty ?? item.factory_remaining ?? 0)
       if (factoryQty <= 0.0001) return false
     }
-    if (filters.stockScope === 'warning') {
-      const availableQty = Number(item.available_after_prealloc_qty ?? item.current_stock_qty ?? item.remaining_qty ?? 0)
-      const factoryAvailableQty = Number(item.factory_available_after_prealloc_qty ?? item.factory_remaining_qty ?? item.factory_remaining ?? 0)
-      if (availableQty >= -0.0001 && factoryAvailableQty >= -0.0001 && Number(item.current_stock_qty ?? item.remaining_qty ?? 0) > 0.0001) return false
-    }
     if (filters.stockScope === 'prealloc_warning') {
       if (!(Number(item.pre_allocated_qty || 0) > 0 && Number(item.available_after_prealloc_qty || 0) < -0.0001)) return false
     }
@@ -1018,6 +1143,12 @@ const filteredInTransit = computed(() => {
   return summary.inTransit.filter((item) => filteredLinkKeys.value.has(buildInventoryLinkKey(item)))
 })
 const filteredBatches = computed(() => filterRows(summary.batches))
+
+const ledgerSectionOptions = computed(() => [
+  { label: TEXT.summarySection, value: 'summary', count: filteredMaterials.value.length },
+  { label: TEXT.transitSection, value: 'transit', count: filteredInTransit.value.length },
+  { label: TEXT.batchSection, value: 'batch', count: filteredBatches.value.length }
+])
 
 const pagedMaterials = computed(() => {
   const start = (materialCurrentPage.value - 1) * materialPageSize.value
@@ -1046,6 +1177,51 @@ function transitRowKey(row) {
 }
 function batchRowKey(row) {
   return `${row.id || row.batch_no || 'batch'}`
+}
+
+function openInventoryDetail(row) {
+  selectedInventoryRow.value = row
+  inventoryDetailOpen.value = true
+}
+
+function sameInventoryMaterial(left = {}, right = {}) {
+  return String(left.material_id || left.material_code || '') === String(right.material_id || right.material_code || '')
+    && String(left.color || '').trim() === String(right.color || '').trim()
+    && String(left.size || '').trim() === String(right.size || '').trim()
+    && resolveSupplierText(left) === resolveSupplierText(right)
+}
+
+const selectedInventoryBatches = computed(() => {
+  if (!selectedInventoryRow.value) return []
+  return summary.batches.filter((item) => sameInventoryMaterial(item, selectedInventoryRow.value)).slice(0, 20)
+})
+
+const selectedInventoryTransit = computed(() => {
+  if (!selectedInventoryRow.value) return []
+  return summary.inTransit.filter((item) => sameInventoryMaterial(item, selectedInventoryRow.value)).slice(0, 20)
+})
+
+const selectedInventoryStats = computed(() => {
+  const row = selectedInventoryRow.value
+  if (!row) return []
+  return [
+    { label: TEXT.currentStock, value: formatQtyWithUnit(row.current_stock_qty, row.base_unit), className: qtyToneClass(row.current_stock_qty) },
+    { label: TEXT.warehouseRemain, value: formatQtyWithUnit(row.warehouse_remaining_qty, row.base_unit), className: qtyToneClass(row.warehouse_remaining_qty) },
+    { label: TEXT.factoryRemain, value: formatQtyWithUnit(row.factory_remaining_qty, row.base_unit), className: qtyToneClass(row.factory_remaining_qty) },
+    { label: TEXT.preAllocated, value: formatQtyWithUnit(row.pre_allocated_qty, row.base_unit), className: qtyToneClass(row.pre_allocated_qty) },
+    { label: TEXT.availableAfterPrealloc, value: formatQtyWithUnit(row.available_after_prealloc_qty, row.base_unit), className: qtyToneClass(row.available_after_prealloc_qty) },
+    { label: TEXT.avgCost, value: `${formatMoney(row.avg_cost_price, 4)}/${row.base_unit || ''}` },
+    { label: TEXT.stockValue, value: formatMoney(row.stock_value || 0, 2) },
+    { label: TEXT.latestArrival, value: formatDate(row.latest_received_at) }
+  ]
+})
+
+function goInventoryFlow(row) {
+  router.push({ path: '/inventory-flow', query: { q: row?.material_code || '', field: 'material_code' } })
+}
+
+function goPurchaseWithMaterial(row) {
+  router.push({ path: '/purchase', query: { q: row?.material_code || '', field: 'material_code' } })
 }
 
 async function loadInventory() {
@@ -1245,7 +1421,190 @@ watch(filteredBatches, (rows) => {
   font-size: 12px;
 }
 
+.inventory-view-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.inventory-view-switch__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 58px;
+  padding: 12px 16px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #395272;
+  cursor: pointer;
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.05);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.inventory-view-switch__item strong {
+  color: #0f3b74;
+  font-size: 20px;
+}
+
+.inventory-view-switch__item--active {
+  border-color: rgba(0, 122, 255, 0.46);
+  background: linear-gradient(135deg, #ffffff 0%, #edf6ff 100%);
+  box-shadow: 0 16px 34px rgba(0, 122, 255, 0.13);
+}
+
+.inventory-view-switch__item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(0, 122, 255, 0.36);
+}
+
+.inventory-clickable-row {
+  cursor: pointer;
+}
+
+.inventory-clickable-row:hover td,
+.inventory-clickable-row:hover {
+  background: #f3f8ff;
+}
+
+.inventory-detail-drawer :deep(.ant-drawer-content) {
+  background: linear-gradient(180deg, #f7fbff 0%, #ffffff 42%);
+}
+
+.inventory-detail-drawer :deep(.ant-drawer-header) {
+  border-bottom-color: rgba(191, 219, 254, 0.72);
+}
+
+.inventory-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.inventory-detail__hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(191, 219, 254, 0.7);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.inventory-detail__title {
+  color: #102a4c;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.inventory-detail__sub {
+  margin-top: 4px;
+  color: #60728d;
+}
+
+.inventory-detail__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.inventory-detail__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.inventory-detail__stat {
+  padding: 12px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.inventory-detail__stat span {
+  display: block;
+  margin-bottom: 6px;
+  color: #6b7d95;
+  font-size: 12px;
+}
+
+.inventory-detail__stat strong {
+  color: #102a4c;
+  font-size: 16px;
+}
+
+.inventory-detail__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.inventory-detail__section {
+  padding: 14px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 18px;
+  background: #fff;
+}
+
+.inventory-detail__section h3 {
+  margin: 0 0 10px;
+  color: #102a4c;
+  font-size: 15px;
+}
+
+.inventory-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inventory-detail-list__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, auto);
+  gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #f8fbff;
+}
+
+.inventory-detail-list__item strong {
+  color: #102a4c;
+}
+
+.inventory-detail-list__item p {
+  margin: 4px 0 0;
+  color: #6b7d95;
+}
+
+.inventory-detail-list__qty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  color: #395272;
+  font-size: 12px;
+}
+
 @media (max-width: 900px) {
+  .inventory-view-switch {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-detail__stats {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-detail-list__item {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-detail-list__qty {
+    align-items: flex-start;
+  }
+
   .inventory-ledger-page {
     padding-left: 0;
   }

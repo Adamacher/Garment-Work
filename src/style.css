@@ -849,9 +849,20 @@ body {
 }
 
 @media (max-width: 900px) {
+  html {
+    background: #f4faff;
+  }
+
   body {
     min-width: 0;
     font-size: 13px;
+    background: #f4faff;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: contain;
+  }
+
+  .erp-page {
+    gap: 12px;
   }
 
   .shell-header {
@@ -875,7 +886,8 @@ body {
 
   .page-title {
     margin-top: 8px;
-    font-size: 20px;
+    font-size: 22px;
+    letter-spacing: -0.03em;
   }
 
   .page-subtitle {
@@ -889,7 +901,11 @@ body {
   }
 
   .content-card {
-    border-radius: 18px;
+    border: 1px solid rgba(184, 213, 248, 0.64) !important;
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.9) !important;
+    box-shadow: 0 14px 34px rgba(36, 75, 125, 0.08) !important;
+    overflow: hidden;
   }
 
   .content-card .ant-card-head {
@@ -909,7 +925,9 @@ body {
 
   .page-summary-strip__item {
     padding: 12px 12px 10px;
-    border-radius: 14px;
+    border-radius: 18px;
+    background: linear-gradient(180deg, #ffffff 0%, #f5faff 100%);
+    box-shadow: 0 10px 24px rgba(54, 105, 172, 0.07);
   }
 
   .page-summary-strip__value {
@@ -935,6 +953,15 @@ body {
     gap: 8px;
     margin-bottom: 10px;
     border-radius: 14px;
+  }
+
+  .smart-filter-bar {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding: 8px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.88);
+    -webkit-overflow-scrolling: touch;
   }
 
   .toolbar-left,
@@ -964,6 +991,25 @@ body {
     min-height: 32px;
     padding-inline: 10px;
     font-size: 11px;
+  }
+
+  .ant-btn {
+    border-radius: 13px !important;
+  }
+
+  .ant-modal {
+    max-width: calc(100vw - 20px);
+    margin: 10px auto;
+  }
+
+  .ant-modal-content,
+  .ant-drawer-content {
+    border-radius: 24px !important;
+  }
+
+  .ant-drawer-body,
+  .ant-modal-body {
+    -webkit-overflow-scrolling: touch;
   }
 
   .toolbar-refresh-btn,
@@ -1015,6 +1061,87 @@ body {
   .shell-mobile-menu-btn,
   .shell-header-logout {
     min-height: 34px !important;
+  }
+
+  .mobile-filter-fab {
+    right: 14px !important;
+    bottom: calc(92px + env(safe-area-inset-bottom, 0px)) !important;
+    left: auto !important;
+    top: auto !important;
+    width: 58px !important;
+    height: 58px !important;
+    border-radius: 20px !important;
+    font-size: 0;
+    box-shadow: 0 18px 34px rgba(0, 122, 255, 0.24) !important;
+  }
+
+  .mobile-filter-fab::before {
+    content: '筛选';
+    font-size: 12px;
+    font-weight: 800;
+  }
+}
+
+@media (max-width: 900px) {
+  .erp-mobile-list {
+    gap: 12px;
+  }
+
+  .erp-mobile-card {
+    position: relative;
+    padding: 14px;
+    border: 1px solid rgba(184, 213, 248, 0.66);
+    border-radius: 22px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(246, 251, 255, 0.96) 100%);
+    box-shadow: 0 16px 34px rgba(48, 91, 150, 0.08);
+  }
+
+  .erp-mobile-card::before {
+    content: '';
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    top: 0;
+    height: 3px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #5ac8fa 0%, #007aff 56%, rgba(0, 122, 255, 0) 100%);
+  }
+
+  .erp-mobile-card__head {
+    margin-bottom: 12px;
+  }
+
+  .erp-mobile-card__title {
+    color: #102a4c;
+    font-size: 16px;
+    letter-spacing: -0.02em;
+  }
+
+  .erp-mobile-card__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+
+  .erp-mobile-card__stat {
+    border: 1px solid rgba(217, 231, 248, 0.82);
+    border-radius: 16px;
+    background: rgba(248, 252, 255, 0.9);
+    padding: 10px;
+  }
+
+  .erp-mobile-card__footer {
+    position: sticky;
+    bottom: 82px;
+    z-index: 2;
+    margin: 12px -4px -4px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(226, 232, 240, 0.8);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.94));
+  }
+
+  .erp-mobile-card__footer .ant-btn {
+    min-height: 34px;
   }
 }
 
@@ -2057,14 +2184,14 @@ body {
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
 }
 
-.column-config-popover .ant-popover-inner {
+.column-config-popover .ant-popover-inner,
+.column-config-modal .ant-modal-content {
   border-radius: 16px;
   padding: 0;
   overflow: hidden;
 }
 
 .column-config-panel {
-  width: 280px;
   background: #fff;
 }
 
@@ -2078,10 +2205,34 @@ body {
   font-weight: 700;
 }
 
+.column-config-modal .column-config-head {
+  align-items: flex-start;
+  gap: 12px;
+  padding: 0 0 12px;
+}
+
 .column-config-list {
-  max-height: 320px;
+  max-height: 420px;
   overflow: auto;
   padding: 10px 12px 12px;
+}
+
+.column-config-modal .column-config-list {
+  padding: 6px 0 12px;
+}
+
+.column-config-bulk {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(191, 219, 254, 0.72);
+  border-radius: 14px;
+  background: #f5faff;
+  color: #426384;
+  font-size: 12px;
 }
 
 .column-config-item {
@@ -2124,6 +2275,17 @@ body {
 .column-config-move:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+.column-config-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  color: #64748b;
+  font-size: 12px;
 }
 
 .inventory-ledger-page .page-hero {

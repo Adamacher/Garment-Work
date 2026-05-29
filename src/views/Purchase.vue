@@ -353,7 +353,7 @@
       <div v-for="(line, index) in lines" :key="line.localKey" class="bom-row">
         <div class="sortable-row__bar">
           <span class="sortable-row__title">明细 {{ index + 1 }}</span>
-          <a-button v-if="!viewMode" size="small" danger @click="removeLine(index)">删除</a-button>
+          <a-button v-if="!viewMode" size="small" danger :disabled="isProtectedPurchaseLine(line)" @click="removeLine(index)">删除</a-button>
         </div>
         <a-row :gutter="10" class="plan-editor-row">
           <a-col :flex="'280px'"><a-form-item label="原料" required><a-select v-model:value="line.material_id" :options="materialOptions" show-search option-filter-prop="label" :get-popup-container="getPopupContainer" @change="() => handleMaterialOrColorChange(line)" /></a-form-item></a-col>
@@ -551,7 +551,11 @@
     >
       <div v-if="afterSaleRecord" class="table-stack table-stack--tight" style="margin-bottom: 12px;">
         <div class="table-primary">采购单号：{{ afterSaleRecord.purchase_order_no || afterSaleRecord.batch_no || '-' }}</div>
-        <div class="table-secondary">供应商：{{ afterSaleRecord.supplier || '-' }}，仅支持操作已审核且当前仍在仓库中的数量。</div>
+        <div class="table-secondary">
+          供应商：{{ afterSaleRecord.supplier || '-' }}。
+          <template v-if="afterSaleType === 'exchange'">换出会校验仓库可操作数量，换入会生成新的换货入库批次。</template>
+          <template v-else>仅支持退回已审核且当前仍在仓库中的数量。</template>
+        </div>
       </div>
       <div v-for="line in afterSaleLines" :key="line.id" class="bom-row" style="margin-bottom: 12px;">
         <div class="sortable-row__bar">
@@ -562,18 +566,43 @@
           </span>
         </div>
         <a-row :gutter="10" class="plan-editor-row">
-          <a-col :span="6">
+          <a-col :span="afterSaleType === 'exchange' ? 5 : 6">
             <a-form-item label="仓库可操作数量">
               <a-input :value="`${formatQty(line.available_qty)} ${normalizeUnit(line.unit)}`" readonly />
             </a-form-item>
           </a-col>
-          <a-col :span="5">
-            <a-form-item :label="afterSaleType === 'exchange' ? '换货数量' : '退回数量'">
-              <a-input-number v-model:value="line.qty" style="width: 100%" :min="0" :max="Number(line.available_qty || 0)" :step="0.0001" />
+          <a-col :span="afterSaleType === 'exchange' ? 3 : 5">
+            <a-form-item :label="afterSaleType === 'exchange' ? '换出数量' : '退回数量'">
+              <a-input-number
+                v-if="afterSaleType === 'exchange'"
+                v-model:value="line.out_qty"
+                style="width: 100%"
+                :min="0"
+                :max="Number(line.available_qty || 0)"
+                :step="0.0001"
+              />
+              <a-input-number v-else v-model:value="line.qty" style="width: 100%" :min="0" :max="Number(line.available_qty || 0)" :step="0.0001" />
             </a-form-item>
           </a-col>
-          <a-col :span="5">
-            <a-form-item label="对应仓库">
+          <a-col v-if="afterSaleType === 'exchange'" :span="3">
+            <a-form-item label="换入数量">
+              <a-input-number v-model:value="line.in_qty" style="width: 100%" :min="0" :step="0.0001" />
+            </a-form-item>
+          </a-col>
+          <a-col v-if="afterSaleType === 'exchange'" :span="3">
+            <a-form-item label="换入尺码">
+              <a-select
+                v-model:value="line.in_size"
+                allow-clear
+                show-search
+                placeholder="尺码"
+                :options="getExchangeSizeOptions(line)"
+                :filter-option="filterSelectOption"
+              />
+            </a-form-item>
+          </a-col>
+          <a-col :span="afterSaleType === 'exchange' ? 4 : 5">
+            <a-form-item :label="afterSaleType === 'exchange' ? '入库仓库' : '对应仓库'">
               <a-select
                 v-model:value="line.warehouse_name"
                 allow-clear
@@ -584,12 +613,12 @@
               />
             </a-form-item>
           </a-col>
-          <a-col :span="4">
+          <a-col :span="afterSaleType === 'exchange' ? 3 : 4">
             <a-form-item label="原因">
               <a-input v-model:value="line.reason" :placeholder="afterSaleType === 'exchange' ? '如色差/换码' : '如退货/质量问题'" />
             </a-form-item>
           </a-col>
-          <a-col :span="4">
+          <a-col :span="afterSaleType === 'exchange' ? 3 : 4">
             <a-form-item label="备注">
               <a-input v-model:value="line.remark" placeholder="补充说明" />
             </a-form-item>
@@ -755,7 +784,7 @@ const exportTargetRecord = ref(null)
 const exportTargetIds = ref([])
 const exportTargetFormat = ref('pdf')
 const baseDataLoadedAt = ref(0)
-const purchaseColumnStorageKey = 'purchase.columns'
+const purchaseColumnStorageKey = 'purchase.columns.v2'
 const purchaseExportConfigStorageKey = 'purchase.export.config'
 const purchaseViewStateStorageKey = 'purchase.view.state'
 const { isMobileLayout } = useMobileLayout()
@@ -783,6 +812,7 @@ const exportLayoutOptions = [
   { label: 'A5 横版采购单', value: 'card' }
 ]
 const originalLineIds = ref([])
+const originalLineSnapshots = ref([])
 
 const filterFieldOptions = [
   { label: '按批次/原料', value: 'keyword' },
@@ -835,7 +865,10 @@ function loadStoredColumnKeys() {
 }
 
 const visibleColumnKeys = ref(loadStoredColumnKeys())
-const columns = computed(() => columnDefs.filter((column) => visibleColumnKeys.value.includes(column.key)))
+const columns = computed(() => {
+  const map = new Map(columnDefs.map((column) => [column.key, column]))
+  return visibleColumnKeys.value.map((key) => map.get(key)).filter(Boolean)
+})
 
 function formatMaterialLabel(item) {
   const code = String(item?.code || item?.material_code || '').trim()
@@ -1015,9 +1048,35 @@ function buildPurchaseOrderRemark(rows = []) {
   return remarks.join('；')
 }
 
+function isFullyAfterSaleOutRow(row) {
+  return String(row?.document_status || '').trim() === 'approved'
+    && Number(row?.after_sale_out_qty || 0) > 0
+    && Number(row?.remaining_qty || 0) <= 0.000001
+    && Number(row?.after_sale_out_qty || 0) >= Number(row?.gross_qty || 0) - 0.000001
+}
+
+function isInactivePurchaseRow(row) {
+  return String(row?.document_status || '').trim() === 'voided'
+    || isFullyAfterSaleOutRow(row)
+}
+
+function isProtectedPurchaseLine(row) {
+  return Boolean(Number(row?.id || 0)) && (
+    String(row?.document_status || '').trim() === 'approved'
+    || Number(row?.after_sale_out_qty || 0) > 0
+    || Number(row?.after_sale_in_ref_count || 0) > 0
+  )
+}
+
 const filteredList = computed(() => {
   const groups = new Map()
-  for (const row of filteredRows.value) {
+  const explicitlyViewingVoided = String(documentStatusFilter.value || '').trim() === 'voided'
+  const visibleRows = filteredRows.value.filter((row) => (
+    explicitlyViewingVoided
+      ? String(row?.document_status || '').trim() === 'voided'
+      : !isInactivePurchaseRow(row)
+  ))
+  for (const row of visibleRows) {
     const key = buildPurchaseGroupKey(row)
     if (!groups.has(key)) {
       groups.set(key, {
@@ -1202,6 +1261,11 @@ function getDocumentRows(record) {
     : list.value.filter((item) => getRecordIds(record).includes(Number(item.id)))
 }
 
+function getActiveDocumentRows(record) {
+  const rows = getDocumentRows(record)
+  return rows.filter((item) => !isInactivePurchaseRow(item))
+}
+
 function getMergeGroupIdForRecord(record) {
   const groupIds = [...new Set(
     getDocumentRows(record)
@@ -1212,7 +1276,7 @@ function getMergeGroupIdForRecord(record) {
 }
 
 function canUnmergeRecord(record) {
-  const rows = getDocumentRows(record)
+  const rows = getActiveDocumentRows(record)
   if (rows.length < 2) return false
   return Boolean(getMergeGroupIdForRecord(record))
 }
@@ -1283,7 +1347,10 @@ function createLine(data = {}) {
     processing_cost: Number(data.processing_cost || 0),
     processing_note: data.processing_note || '',
     color_remark: data.color_remark || '',
-    remark: data.remark || ''
+    remark: data.remark || '',
+    document_status: data.document_status || 'draft',
+    after_sale_out_qty: Number(data.after_sale_out_qty || 0),
+    after_sale_in_ref_count: Number(data.after_sale_in_ref_count || 0)
   }
   return normalized
 }
@@ -1329,6 +1396,7 @@ function resetForm() {
   lines.value = [createLine()]
   isEditMode.value = false
   originalLineIds.value = []
+  originalLineSnapshots.value = []
 }
 
 function buildDraftPayload() {
@@ -1700,6 +1768,11 @@ function addLine() {
 }
 
 function removeLine(index) {
+  const line = lines.value[index]
+  if (isProtectedPurchaseLine(line)) {
+    message.warning('该明细已审核或已有供应商换货记录，不能直接删除；如需调整请继续做换货或核实库存')
+    return
+  }
   if (lines.value.length === 1) return
   lines.value.splice(index, 1)
 }
@@ -1741,20 +1814,36 @@ function createAuditLine(row) {
 }
 
 function buildAfterSaleLine(row) {
-  const actualUnit = normalizeUnit(row.actual_input_unit || row.purchase_input_unit || row.unit)
+  const stockUnit = normalizeUnit(row.unit || row.actual_input_unit || row.purchase_input_unit)
   const warehouseRemainingQty = Number(row.warehouse_remaining_qty ?? Math.max(Number(row.remaining_qty || 0) - Number(row.factory_allocated_qty || 0), 0))
   return {
     id: Number(row.id || 0),
+    material_id: Number(row.material_id || 0),
     material_label: formatMaterialLabel(row),
     color: row.color || '',
     size: row.size || '',
-    unit: actualUnit,
+    unit: stockUnit,
     available_qty: Number(Math.max(warehouseRemainingQty, 0).toFixed(4)),
     warehouse_name: String(row.warehouse_name || '').trim() || '主仓库',
     qty: 0,
+    out_qty: 0,
+    in_qty: 0,
+    in_color: row.color || '',
+    in_size: row.size || '',
     reason: '',
     remark: ''
   }
+}
+
+function getExchangeSizeOptions(line) {
+  const sizes = afterSaleLines.value
+    .filter((item) => Number(item.material_id || 0) === Number(line?.material_id || 0)
+      && String(item.color || '').trim() === String(line?.color || '').trim())
+    .map((item) => String(item.size || '').trim())
+    .filter(Boolean)
+  const current = String(line?.in_size || line?.size || '').trim()
+  return [...new Set([current, ...sizes].filter(Boolean))]
+    .map((item) => ({ label: item, value: item }))
 }
 
 function getAuditAllocationActualQty(line, allocation) {
@@ -1883,7 +1972,7 @@ async function updateSingleDocumentStatus(record, value) {
 
 function openAuditModal(ids = []) {
   const rows = typeof ids === 'object' && ids !== null && !Array.isArray(ids)
-    ? getDocumentRows(ids)
+    ? getActiveDocumentRows(ids)
     : list.value.filter((item) => getRecordIds(ids).includes(Number(item.id)))
   auditTargetIds.value = getRecordIds(ids)
   auditLines.value = rows.map((row) => createAuditLine(row))
@@ -1892,7 +1981,7 @@ function openAuditModal(ids = []) {
 }
 
 function openAfterSaleModal(record, type = 'return') {
-  const rows = getDocumentRows(record).filter((item) => String(item.document_status || '').trim() === 'approved')
+  const rows = getActiveDocumentRows(record).filter((item) => String(item.document_status || '').trim() === 'approved')
   if (!rows.length) {
     message.error('仅支持对已审核采购单执行退回或换货')
     return
@@ -1908,11 +1997,18 @@ async function confirmAfterSale() {
     .map((item) => ({
       id: Number(item.id || 0),
       qty: Number(item.qty || 0),
+      out_qty: Number(item.out_qty || 0),
+      in_qty: Number(item.in_qty || 0),
       warehouse_name: item.warehouse_name || '主仓库',
+      in_warehouse_name: item.warehouse_name || '主仓库',
+      in_color: item.in_color || item.color || '',
+      in_size: item.in_size || item.size || '',
       reason: item.reason || '',
       remark: item.remark || ''
     }))
-    .filter((item) => item.id && item.qty > 0)
+    .filter((item) => item.id && (afterSaleType.value === 'exchange'
+      ? (item.out_qty > 0 || item.in_qty > 0)
+      : item.qty > 0))
 
   if (!linesPayload.length) {
     message.error(`请至少填写一条${afterSaleType.value === 'exchange' ? '换货' : '退回'}明细`)
@@ -1921,11 +2017,11 @@ async function confirmAfterSale() {
 
   afterSaleSaving.value = true
   try {
-    await api.db.processPurchaseBatchAfterSale(JSON.parse(JSON.stringify({
+    const result = await api.db.processPurchaseBatchAfterSale(JSON.parse(JSON.stringify({
       type: afterSaleType.value,
       lines: linesPayload
     })))
-    message.success(afterSaleType.value === 'exchange' ? '供应商换货已登记' : '退回供应商已登记')
+    message.success(result?.message || (afterSaleType.value === 'exchange' ? '供应商换货已完成' : '退回供应商已登记'))
     afterSaleVisible.value = false
     afterSaleRecord.value = null
     afterSaleLines.value = []
@@ -2127,7 +2223,7 @@ function openDetail(record) {
   resetForm()
   viewMode.value = true
   isEditMode.value = true
-  const rows = getDocumentRows(record)
+  const rows = getActiveDocumentRows(record)
   const seed = rows[0] || record
   detailRecord.value = { ...seed, member_rows: rows }
   form.supplier = seed.supplier || ''
@@ -2142,6 +2238,7 @@ function openDetail(record) {
   dateValue.value = seed.received_at || ''
   lines.value = rows.map((item) => createLine(item))
   originalLineIds.value = rows.map((item) => Number(item.id)).filter(Boolean)
+  originalLineSnapshots.value = rows.map((item) => ({ ...item }))
   auditImages.value = getDocumentReviewImages({ member_rows: rows })
   visible.value = true
 }
@@ -2160,7 +2257,7 @@ function openEdit(record) {
   resetForm()
   viewMode.value = false
   isEditMode.value = true
-  const rows = getDocumentRows(record)
+  const rows = getActiveDocumentRows(record)
   const seed = rows[0] || record
   form.supplier = seed.supplier || ''
   form.purchase_order_no = seed.purchase_order_no || ''
@@ -2174,6 +2271,7 @@ function openEdit(record) {
   dateValue.value = seed.received_at || ''
   lines.value = rows.map((item) => createLine(item))
   originalLineIds.value = rows.map((item) => Number(item.id)).filter(Boolean)
+  originalLineSnapshots.value = rows.map((item) => ({ ...item }))
   promptRestoreTempDraft()
 }
 
@@ -2181,7 +2279,7 @@ async function openCopy(record) {
   resetForm()
   viewMode.value = false
   isEditMode.value = false
-  const rows = getDocumentRows(record)
+  const rows = getActiveDocumentRows(record)
   const seed = rows[0] || record
   form.supplier = seed.supplier || ''
   form.purchase_order_no = await api.db.getNextPurchaseOrderNo()
@@ -2246,6 +2344,11 @@ async function save() {
     const currentLineIds = validLines.map((item) => Number(item.id)).filter(Boolean)
     const deletedLineIds = isEditMode.value
       ? originalLineIds.value.filter((id) => !currentLineIds.includes(id))
+        .filter((id) => {
+          const snapshot = originalLineSnapshots.value.find((item) => Number(item.id) === Number(id))
+            || list.value.find((item) => Number(item.id) === Number(id))
+          return !isProtectedPurchaseLine(snapshot)
+        })
       : []
 
     for (const line of validLines) {

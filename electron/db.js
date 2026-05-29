@@ -3971,6 +3971,12 @@ function repairPurchaseBatchQuantities() {
     FROM production_order_materials
     WHERE batch_id=?
   `)
+  const afterSaleOutStmt = db.prepare(`
+    SELECT ROUND(COALESCE(SUM(qty), 0), 6) AS qty
+    FROM purchase_batch_after_sales
+    WHERE purchase_batch_id=?
+      AND LOWER(TRIM(COALESCE(type, ''))) IN ('return', 'exchange')
+  `)
   const updateStmt = db.prepare(`
     UPDATE purchase_batches
     SET
@@ -4030,7 +4036,8 @@ function repairPurchaseBatchQuantities() {
       }
 
       const allocatedQty = Number(allocatedStmt.get(row.id)?.qty || 0)
-      const remainingQty = round(Math.max(grossQty - allocatedQty, 0), 6)
+      const afterSaleOutQty = Number(afterSaleOutStmt.get(row.id)?.qty || 0)
+      const remainingQty = round(Math.max(grossQty - allocatedQty - afterSaleOutQty, 0), 6)
       let settlementQty = 0
       try {
         settlementQty = resolvePurchasePricedQty({
@@ -6145,6 +6152,13 @@ CREATE TABLE IF NOT EXISTS purchase_batch_after_sales (
   qty REAL NOT NULL DEFAULT 0,
   unit TEXT DEFAULT '',
   warehouse_name TEXT DEFAULT '主仓库',
+  in_batch_id INTEGER DEFAULT NULL,
+  in_batch_no TEXT DEFAULT '',
+  in_qty REAL NOT NULL DEFAULT 0,
+  in_unit TEXT DEFAULT '',
+  in_warehouse_name TEXT DEFAULT '主仓库',
+  in_color TEXT DEFAULT '',
+  in_size TEXT DEFAULT '',
   reason TEXT DEFAULT '',
   remark TEXT DEFAULT '',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -6409,6 +6423,13 @@ runStartupWriteStep('backfill:purchase_batches.updated_at', () => {
 ensureColumn('purchase_batch_factory_allocations', 'factory_name', "TEXT DEFAULT ''")
 ensureColumn('purchase_batch_factory_allocations', 'allocated_qty', 'REAL NOT NULL DEFAULT 0')
 ensureColumn('purchase_batch_factory_allocations', 'allocated_roll_count', 'REAL NOT NULL DEFAULT 0')
+ensureColumn('purchase_batch_after_sales', 'in_batch_id', 'INTEGER DEFAULT NULL')
+ensureColumn('purchase_batch_after_sales', 'in_batch_no', "TEXT DEFAULT ''")
+ensureColumn('purchase_batch_after_sales', 'in_qty', 'REAL NOT NULL DEFAULT 0')
+ensureColumn('purchase_batch_after_sales', 'in_unit', "TEXT DEFAULT ''")
+ensureColumn('purchase_batch_after_sales', 'in_warehouse_name', "TEXT DEFAULT '主仓库'")
+ensureColumn('purchase_batch_after_sales', 'in_color', "TEXT DEFAULT ''")
+ensureColumn('purchase_batch_after_sales', 'in_size', "TEXT DEFAULT ''")
 ensureColumn('production_orders', 'factory_name', "TEXT DEFAULT ''")
 ensureColumn('production_orders', 'style_no', "TEXT DEFAULT ''")
 ensureColumn('production_orders', 'product_name', "TEXT DEFAULT ''")
@@ -6829,6 +6850,11 @@ function normalizeInsertId(value) {
 const orderNoPrefix = () => `SC${localDateCode()}`
 const batchNoPrefix = () => `PC${localDateCode()}`
 const purchaseOrderNoPrefix = () => `PO${localDateCode()}`
+
+runStartupWriteStep('repair:legacy-exchange-in-batches', () => {
+  const repairedCount = repairLegacyExchangeInBatches()
+  if (repairedCount > 0) bumpDataRevision()
+})
 
 ipcMain.handle('db:getDashboardStats', () => getDashboardStats())
 
@@ -7361,6 +7387,318 @@ ipcMain.handle('db:updatePurchaseBatchFactoryAllocations', (_event, payload = {}
   return { success: true }
 })
 
+function buildExchangeInRemark(sourceBatch, sourceAfterSaleId, extraRemark = '') {
+  const sourceText = cleanText(sourceBatch?.batch_no || sourceBatch?.purchase_order_no)
+  const suffix = sourceAfterSaleId ? `，来源售后 #${sourceAfterSaleId}` : ''
+  const detail = cleanText(extraRemark)
+  return `供应商换货入库${sourceText ? `，来源批次 ${sourceText}` : ''}${suffix}${detail ? `；${detail}` : ''}`
+}
+
+function createExchangeInBatch(sourceBatch, payload = {}) {
+  const inQty = round(Number(payload.in_qty || 0), 6)
+  if (!sourceBatch || inQty <= 0) return null
+  const stockUnit = normalizeUnit(payload.in_unit || sourceBatch.unit || '米')
+  const warehouseName = cleanText(payload.in_warehouse_name || payload.warehouse_name || sourceBatch.warehouse_name) || '主仓库'
+  const targetColor = cleanText(payload.in_color || sourceBatch.color)
+  const targetSize = cleanText(payload.in_size || sourceBatch.size)
+  const batchNo = cleanText(payload.batch_no) || nextSerial(batchNoPrefix(), 'purchase_batches', 'batch_no')
+  const unitCost = round(
+    Number(sourceBatch.effective_unit_price || sourceBatch.base_unit_price || sourceBatch.raw_unit_price || sourceBatch.price || 0),
+    6
+  )
+  const totalAmount = round(unitCost * inQty, 4)
+  const remark = buildExchangeInRemark(sourceBatch, payload.source_after_sale_id, payload.remark)
+  const data = {
+    batch_no: batchNo,
+    document_status: 'approved',
+    review_images_json: '[]',
+    material_id: Number(sourceBatch.material_id || 0),
+    purchase_order_no: cleanText(sourceBatch.purchase_order_no || sourceBatch.batch_no),
+    merge_group_id: '',
+    merge_snapshot_json: '',
+    supplier: cleanText(sourceBatch.supplier),
+    warehouse_name: warehouseName,
+    color: targetColor,
+    color_remark: normalizePurchaseColorRemarkText(sourceBatch.color_remark),
+    size: targetSize,
+    gross_qty: inQty,
+    remaining_qty: inQty,
+    unit: stockUnit,
+    price: unitCost,
+    price_unit: stockUnit,
+    price_type: cleanText(sourceBatch.price_type) || 'bulk',
+    raw_unit_price: unitCost,
+    base_unit_price: unitCost,
+    processing_cost: 0,
+    processing_cost_per_unit: 0,
+    processing_note: '',
+    parent_batch_id: Number(sourceBatch.id || 0) || null,
+    source_batch_no: cleanText(sourceBatch.batch_no),
+    roll_count: 0,
+    purchase_input_qty: inQty,
+    purchase_input_unit: stockUnit,
+    actual_input_qty: inQty,
+    actual_input_unit: stockUnit,
+    adjustment_type: 'none',
+    left_gap: 0,
+    right_gap: 0,
+    gap_ratio: 1,
+    custom_formula: '',
+    effective_unit_price: unitCost,
+    total_amount: totalAmount,
+    rounding_adjustment: 0,
+    received_at: cleanText(sourceBatch.received_at),
+    remark
+  }
+  const insertedId = normalizeInsertId(db.prepare(`
+    INSERT INTO purchase_batches (
+      batch_no,
+      document_status,
+      review_images_json,
+      material_id,
+      purchase_order_no,
+      merge_group_id,
+      merge_snapshot_json,
+      supplier,
+      warehouse_name,
+      color,
+      color_remark,
+      size,
+      gross_qty,
+      remaining_qty,
+      unit,
+      price,
+      price_unit,
+      price_type,
+      raw_unit_price,
+      base_unit_price,
+      processing_cost,
+      processing_cost_per_unit,
+      processing_note,
+      parent_batch_id,
+      source_batch_no,
+      roll_count,
+      purchase_input_qty,
+      purchase_input_unit,
+      actual_input_qty,
+      actual_input_unit,
+      adjustment_type,
+      left_gap,
+      right_gap,
+      gap_ratio,
+      custom_formula,
+      effective_unit_price,
+      total_amount,
+      rounding_adjustment,
+      received_at,
+      remark
+    ) VALUES (
+      @batch_no,
+      @document_status,
+      @review_images_json,
+      @material_id,
+      @purchase_order_no,
+      @merge_group_id,
+      @merge_snapshot_json,
+      @supplier,
+      @warehouse_name,
+      @color,
+      @color_remark,
+      @size,
+      @gross_qty,
+      @remaining_qty,
+      @unit,
+      @price,
+      @price_unit,
+      @price_type,
+      @raw_unit_price,
+      @base_unit_price,
+      @processing_cost,
+      @processing_cost_per_unit,
+      @processing_note,
+      @parent_batch_id,
+      @source_batch_no,
+      @roll_count,
+      @purchase_input_qty,
+      @purchase_input_unit,
+      @actual_input_qty,
+      @actual_input_unit,
+      @adjustment_type,
+      @left_gap,
+      @right_gap,
+      @gap_ratio,
+      @custom_formula,
+      @effective_unit_price,
+      @total_amount,
+      @rounding_adjustment,
+      @received_at,
+      @remark
+    )
+  `).run(data).lastInsertRowid)
+  const saved = db.prepare(`
+    SELECT pb.*, m.code AS material_code, m.name AS material_name
+    FROM purchase_batches pb
+    JOIN materials m ON m.id = pb.material_id
+    WHERE pb.id=?
+  `).get(insertedId)
+  logInventoryMovement({
+    movement_type: '采购换货-换入',
+    direction: 'in',
+    material_id: saved.material_id,
+    batch_id: saved.id,
+    material_code: saved.material_code,
+    material_name: saved.material_name,
+    color: saved.color,
+    qty: saved.gross_qty,
+    unit: saved.unit,
+    balance_after: saved.remaining_qty,
+    source_table: 'purchase_batches',
+    source_id: saved.id,
+    source_no: saved.batch_no,
+    document_status: saved.document_status,
+    remark
+  })
+  logAudit('采购批次', '供应商换货入库', 'purchase_batch', insertedId, cleanText(saved.batch_no), null, saved, remark)
+  return saved
+}
+
+function repairLegacyExchangeInBatches() {
+  if (workspaceReadOnly) return 0
+  const hasExchangeInColumns = ['in_batch_id', 'in_batch_no', 'in_qty', 'in_unit', 'in_warehouse_name', 'in_color', 'in_size']
+    .every((column) => hasColumn('purchase_batch_after_sales', column))
+  if (!hasExchangeInColumns) return 0
+
+  const rows = db.prepare(`
+    SELECT
+      s.id AS after_sale_id,
+      s.qty AS after_sale_qty,
+      s.unit AS after_sale_unit,
+      s.warehouse_name AS after_sale_warehouse_name,
+      s.in_batch_id AS after_sale_in_batch_id,
+      s.in_qty AS after_sale_in_qty,
+      s.in_unit AS after_sale_in_unit,
+      s.in_warehouse_name AS after_sale_in_warehouse_name,
+      s.in_color AS after_sale_in_color,
+      s.in_size AS after_sale_in_size,
+      s.remark AS after_sale_remark,
+      linked.id AS linked_in_batch_id,
+      LOWER(TRIM(COALESCE(linked.document_status, 'draft'))) AS linked_in_document_status,
+      pb.*,
+      m.code AS material_code,
+      m.name AS material_name
+    FROM purchase_batch_after_sales s
+    JOIN purchase_batches pb ON pb.id = s.purchase_batch_id
+    JOIN materials m ON m.id = pb.material_id
+    LEFT JOIN purchase_batches linked ON linked.id = s.in_batch_id
+    WHERE LOWER(TRIM(COALESCE(s.type, ''))) = 'exchange'
+      AND COALESCE(s.qty, 0) > 0
+      AND (
+        COALESCE(s.in_qty, 0) <= 0
+        OR COALESCE(s.in_batch_id, 0) <= 0
+        OR linked.id IS NULL
+        OR LOWER(TRIM(COALESCE(linked.document_status, 'draft'))) = 'voided'
+      )
+    ORDER BY s.id ASC
+  `).all()
+  if (!rows.length) return 0
+
+  const findExisting = db.prepare(`
+    SELECT id, batch_no, gross_qty, unit, warehouse_name, color, size
+    FROM purchase_batches
+    WHERE material_id=?
+      AND TRIM(COALESCE(color, '')) = ?
+      AND TRIM(COALESCE(size, '')) = ?
+      AND LOWER(TRIM(COALESCE(document_status, 'draft'))) != 'voided'
+      AND id != ?
+      AND (
+        remark LIKE ?
+        OR remark LIKE '%换货%'
+        OR source_batch_no LIKE ?
+      )
+    ORDER BY
+      CASE WHEN remark LIKE '%换货%' THEN 0 ELSE 1 END,
+      id DESC
+    LIMIT 1
+  `)
+  const updateSourceRemaining = db.prepare(`
+    UPDATE purchase_batches
+    SET remaining_qty=?,
+        updated_at=CURRENT_TIMESTAMP
+    WHERE id=?
+  `)
+  const updateAfterSale = db.prepare(`
+    UPDATE purchase_batch_after_sales
+    SET in_batch_id=?,
+        in_batch_no=?,
+        in_qty=?,
+        in_unit=?,
+        in_warehouse_name=?,
+        in_color=?,
+        in_size=?
+    WHERE id=?
+  `)
+
+  const tx = db.transaction((items) => {
+    let repaired = 0
+    items.forEach((row) => {
+      const sourceAfterSaleId = Number(row.after_sale_id || 0)
+      const outQty = round(Number(row.after_sale_qty || 0), 6)
+      const targetColor = cleanText(row.after_sale_in_color || row.color)
+      const targetSize = cleanText(row.after_sale_in_size || row.size)
+      const existing = findExisting.get(
+        Number(row.material_id || 0),
+        targetColor,
+        targetSize,
+        Number(row.id || 0),
+        `%来源售后 #${sourceAfterSaleId}%`,
+        `%${cleanText(row.batch_no)}%`
+      )
+      if (existing) {
+        updateAfterSale.run(
+          Number(existing.id || 0),
+          cleanText(existing.batch_no),
+          Number(row.after_sale_in_qty || row.after_sale_qty || 0),
+          normalizeUnit(existing.unit || row.after_sale_unit || row.unit),
+          cleanText(existing.warehouse_name || row.after_sale_warehouse_name) || '主仓库',
+          cleanText(existing.color || row.after_sale_in_color || row.color),
+          cleanText(existing.size || row.after_sale_in_size || row.size),
+          sourceAfterSaleId
+        )
+        if (outQty > 0 && Number(row.remaining_qty || 0) >= outQty - 0.000001) {
+          updateSourceRemaining.run(round(Number(row.remaining_qty || 0) - outQty, 6), Number(row.id || 0))
+        }
+        return
+      }
+      const saved = createExchangeInBatch(row, {
+        in_qty: Number(row.after_sale_qty || 0),
+        in_unit: normalizeUnit(row.after_sale_unit || row.unit),
+        in_warehouse_name: cleanText(row.after_sale_in_warehouse_name || row.after_sale_warehouse_name || row.warehouse_name) || '主仓库',
+        in_color: cleanText(row.after_sale_in_color || row.color),
+        in_size: cleanText(row.after_sale_in_size || row.size),
+        source_after_sale_id: sourceAfterSaleId,
+        remark: cleanText(row.after_sale_remark)
+      })
+      if (!saved) return
+      updateAfterSale.run(
+        Number(saved.id || 0),
+        cleanText(saved.batch_no),
+        Number(saved.gross_qty || 0),
+        normalizeUnit(saved.unit),
+        cleanText(saved.warehouse_name) || '主仓库',
+        cleanText(saved.color),
+        cleanText(saved.size),
+        sourceAfterSaleId
+      )
+      if (outQty > 0 && Number(row.remaining_qty || 0) >= outQty - 0.000001) {
+        updateSourceRemaining.run(round(Number(row.remaining_qty || 0) - outQty, 6), Number(row.id || 0))
+      }
+      repaired += 1
+    })
+    return repaired
+  })
+  return tx(rows)
+}
+
 ipcMain.handle('db:processPurchaseBatchAfterSale', (_event, payload = {}) => {
   assertWritable('处理采购退回/换货')
   const normalizedType = cleanText(payload.type) === 'exchange' ? 'exchange' : 'return'
@@ -7369,11 +7707,18 @@ ipcMain.handle('db:processPurchaseBatchAfterSale', (_event, payload = {}) => {
     .map((item) => ({
       id: Number(item?.id || 0),
       qty: Number(item?.qty || 0),
+      out_qty: Number(item?.out_qty ?? item?.qty ?? 0),
+      in_qty: Number(item?.in_qty || 0),
       warehouse_name: cleanText(item?.warehouse_name) || '主仓库',
+      in_warehouse_name: cleanText(item?.in_warehouse_name || item?.warehouse_name) || '主仓库',
+      in_color: cleanText(item?.in_color),
+      in_size: cleanText(item?.in_size),
       reason: cleanText(item?.reason),
       remark: cleanText(item?.remark)
     }))
-    .filter((item) => item.id && item.qty > 0)
+    .filter((item) => item.id && (normalizedType === 'exchange'
+      ? (item.out_qty > 0 || item.in_qty > 0)
+      : item.qty > 0))
 
   if (!lines.length) {
     throw new Error(`请至少填写一条${actionLabel}明细`)
@@ -7403,8 +7748,32 @@ ipcMain.handle('db:processPurchaseBatchAfterSale', (_event, payload = {}) => {
       remark
     ) VALUES (?, ?, ?, ?, ?, ?, ?)
   `)
+  const insertAfterSaleWithExchangeIn = db.prepare(`
+    INSERT INTO purchase_batch_after_sales (
+      purchase_batch_id,
+      type,
+      qty,
+      unit,
+      warehouse_name,
+      in_batch_id,
+      in_batch_no,
+      in_qty,
+      in_unit,
+      in_warehouse_name,
+      in_color,
+      in_size,
+      reason,
+      remark
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `)
 
   const tx = db.transaction((entries) => {
+    const result = {
+      count: 0,
+      total_out_qty: 0,
+      total_in_qty: 0,
+      in_lines: []
+    }
     entries.forEach((entry) => {
       const before = select.get(entry.id)
       if (!before) throw new Error('未找到对应采购批次')
@@ -7419,56 +7788,133 @@ ipcMain.handle('db:processPurchaseBatchAfterSale', (_event, payload = {}) => {
       }, 0), 6)
       const warehouseAvailableQty = round(Math.max(Number(before.remaining_qty || 0) - allocatedQty, 0), 6)
 
-      if (entry.qty > warehouseAvailableQty + 0.000001) {
+      const outQty = normalizedType === 'exchange'
+        ? round(Math.max(Number(entry.out_qty || 0), 0), 6)
+        : round(Math.max(Number(entry.qty || 0), 0), 6)
+      const inQty = normalizedType === 'exchange'
+        ? round(Math.max(Number(entry.in_qty || 0), 0), 6)
+        : 0
+
+      if (outQty <= 0 && inQty <= 0) return
+
+      if (outQty > warehouseAvailableQty + 0.000001) {
         throw new Error(`采购批次【${cleanText(before.batch_no)}】当前仓库可操作数量仅剩 ${formatServerQtyWithUnit(warehouseAvailableQty, before.unit)}，不能继续${actionLabel}`)
       }
 
-      const nextRemainingQty = round(Math.max(Number(before.remaining_qty || 0) - entry.qty, 0), 6)
+      const nextRemainingQty = round(Math.max(Number(before.remaining_qty || 0) - outQty, 0), 6)
       const nextWarehouseName = entry.warehouse_name || cleanText(before.warehouse_name) || '主仓库'
-      update.run(nextRemainingQty, nextWarehouseName, entry.id)
-      insertAfterSale.run(
-        entry.id,
-        normalizedType,
-        entry.qty,
-        normalizeUnit(before.unit),
-        nextWarehouseName,
-        entry.reason,
-        entry.remark
-      )
+      let exchangeInBatch = null
+      if (outQty > 0) {
+        update.run(nextRemainingQty, nextWarehouseName, entry.id)
+      }
+      if (normalizedType === 'exchange' && inQty > 0) {
+        exchangeInBatch = createExchangeInBatch(before, {
+          in_qty: inQty,
+          in_unit: normalizeUnit(before.unit),
+          in_warehouse_name: entry.in_warehouse_name || nextWarehouseName,
+          in_color: entry.in_color || before.color,
+          in_size: entry.in_size || before.size,
+          remark: [entry.reason, entry.remark].filter(Boolean).join('；')
+        })
+        if (exchangeInBatch) {
+          result.in_lines.push({
+            batch_no: cleanText(exchangeInBatch.batch_no),
+            material_code: cleanText(exchangeInBatch.material_code),
+            color: cleanText(exchangeInBatch.color),
+            size: cleanText(exchangeInBatch.size),
+            qty: Number(exchangeInBatch.gross_qty || 0),
+            unit: normalizeUnit(exchangeInBatch.unit),
+            warehouse_name: cleanText(exchangeInBatch.warehouse_name)
+          })
+        }
+      }
 
-      logInventoryMovement({
-        movement_type: normalizedType === 'exchange' ? '采购换货' : '采购退回',
-        direction: 'out',
-        material_id: before.material_id,
-        batch_id: before.id,
-        material_code: before.material_code,
-        material_name: before.material_name,
-        color: before.color,
-        qty: entry.qty,
-        unit: before.unit,
-        balance_after: nextRemainingQty,
-        source_table: 'purchase_batches',
-        source_id: before.id,
-        source_no: cleanText(before.purchase_order_no || before.batch_no),
-        document_status: before.document_status,
-        remark: `${actionLabel}${entry.reason ? `：${entry.reason}` : ''}${entry.remark ? `；${entry.remark}` : ''}`
-      })
+      if (normalizedType === 'exchange') {
+        const afterSaleInfo = insertAfterSaleWithExchangeIn.run(
+          entry.id,
+          normalizedType,
+          outQty,
+          normalizeUnit(before.unit),
+          nextWarehouseName,
+          exchangeInBatch ? Number(exchangeInBatch.id || 0) : null,
+          exchangeInBatch ? cleanText(exchangeInBatch.batch_no) : '',
+          inQty,
+          normalizeUnit(exchangeInBatch?.unit || before.unit),
+          cleanText(exchangeInBatch?.warehouse_name || entry.in_warehouse_name || nextWarehouseName) || '主仓库',
+          cleanText(exchangeInBatch?.color || entry.in_color || before.color),
+          cleanText(exchangeInBatch?.size || entry.in_size || before.size),
+          entry.reason,
+          entry.remark
+        )
+        if (exchangeInBatch && afterSaleInfo?.lastInsertRowid) {
+          db.prepare(`
+            UPDATE purchase_batches
+            SET remark=?
+            WHERE id=?
+          `).run(
+            buildExchangeInRemark(before, afterSaleInfo.lastInsertRowid, [entry.reason, entry.remark].filter(Boolean).join('；')),
+            Number(exchangeInBatch.id || 0)
+          )
+        }
+      } else {
+        insertAfterSale.run(
+          entry.id,
+          normalizedType,
+          outQty,
+          normalizeUnit(before.unit),
+          nextWarehouseName,
+          entry.reason,
+          entry.remark
+        )
+      }
+
+      if (outQty > 0) {
+        logInventoryMovement({
+          movement_type: normalizedType === 'exchange' ? '采购换货-换出' : '采购退回',
+          direction: 'out',
+          material_id: before.material_id,
+          batch_id: before.id,
+          material_code: before.material_code,
+          material_name: before.material_name,
+          color: before.color,
+          qty: outQty,
+          unit: before.unit,
+          balance_after: nextRemainingQty,
+          source_table: 'purchase_batches',
+          source_id: before.id,
+          source_no: cleanText(before.purchase_order_no || before.batch_no),
+          document_status: before.document_status,
+          remark: `${actionLabel}${entry.reason ? `：${entry.reason}` : ''}${entry.remark ? `；${entry.remark}` : ''}`
+        })
+      }
 
       const after = select.get(entry.id)
       logAudit('采购批次', actionLabel, 'purchase_batch', entry.id, cleanText(after?.batch_no), before, {
         ...after,
-        after_sale_qty: entry.qty,
+        after_sale_qty: outQty,
+        exchange_in_qty: inQty,
+        exchange_in_batch_no: cleanText(exchangeInBatch?.batch_no),
         after_sale_type: normalizedType,
         after_sale_reason: entry.reason,
         after_sale_remark: entry.remark
       })
+      result.count += 1
+      result.total_out_qty = round(result.total_out_qty + outQty, 6)
+      result.total_in_qty = round(result.total_in_qty + inQty, 6)
     })
+    return result
   })
 
-  tx(lines)
+  const result = tx(lines)
   bumpDataRevision()
   runPostWriteMaintenance().catch(() => {})
-  return { success: true, count: lines.length }
+  const inPreview = (result.in_lines || [])
+    .map((item) => `${item.size ? `${item.size} ` : ''}${formatServerQtyWithUnit(item.qty, item.unit)}`)
+    .join('、')
+  const message = normalizedType === 'exchange'
+    ? `换货完成：换出 ${formatServerQtyWithUnit(result.total_out_qty, lines.length === 1 ? select.get(lines[0].id)?.unit : '')}，换入 ${inPreview || formatServerQtyWithUnit(result.total_in_qty, '')}`
+    : `${actionLabel}已登记：${formatServerQtyWithUnit(result.total_out_qty, lines.length === 1 ? select.get(lines[0].id)?.unit : '')}`
+  return { success: true, ...result, message }
 })
 
 ipcMain.handle('db:voidPurchaseBatches', (e, payload = {}) => {
@@ -7766,6 +8212,8 @@ function getPurchaseBatches(params = {}) {
     return db.prepare(`
     SELECT
       pb.*,
+      COALESCE(after_sale_out.out_qty, 0) AS after_sale_out_qty,
+      COALESCE(after_sale_in.ref_count, 0) AS after_sale_in_ref_count,
       parent.batch_no AS parent_batch_no,
       m.code AS material_code,
       m.name AS material_name,
@@ -7786,6 +8234,18 @@ function getPurchaseBatches(params = {}) {
     FROM purchase_batches pb
     JOIN materials m ON m.id = pb.material_id
     LEFT JOIN purchase_batches parent ON parent.id = pb.parent_batch_id
+    LEFT JOIN (
+      SELECT purchase_batch_id, ROUND(COALESCE(SUM(qty), 0), 6) AS out_qty
+      FROM purchase_batch_after_sales
+      WHERE LOWER(TRIM(COALESCE(type, ''))) IN ('return', 'exchange')
+      GROUP BY purchase_batch_id
+    ) after_sale_out ON after_sale_out.purchase_batch_id = pb.id
+    LEFT JOIN (
+      SELECT in_batch_id, COUNT(*) AS ref_count
+      FROM purchase_batch_after_sales
+      WHERE COALESCE(in_batch_id, 0) > 0
+      GROUP BY in_batch_id
+    ) after_sale_in ON after_sale_in.in_batch_id = pb.id
     ${whereSql}
     ORDER BY datetime(pb.created_at) DESC, pb.id DESC
     LIMIT ${limit}
@@ -8999,6 +9459,16 @@ ipcMain.handle('db:deletePurchaseBatch', (e, id) => {
       `).run(batchId)
     }
 
+    const afterSaleRefs = db.prepare(`
+      SELECT COUNT(*) AS c
+      FROM purchase_batch_after_sales
+      WHERE purchase_batch_id=?
+         OR in_batch_id=?
+    `).get(batchId, batchId).c
+    if (afterSaleRefs) {
+      throw new Error('该采购批次已有供应商退回/换货记录，不能直接删除；如需调整请通过供应商换货、核实库存或新增修正批次处理')
+    }
+
     const childRefs = db.prepare('SELECT COUNT(*) AS c FROM purchase_batches WHERE parent_batch_id=?').get(batchId).c
     if (childRefs) {
       const childRows = db.prepare(`
@@ -9479,7 +9949,17 @@ function getLanBridgeConfig() {
 
 function updateLanBridgeConfig(payload = {}) {
   const currentConfig = readWorkspaceConfig()
+  const shouldPreferRemote = Object.prototype.hasOwnProperty.call(payload, 'prefer_remote')
+    ? Boolean(payload.prefer_remote)
+    : Boolean(currentConfig?.preferLanService)
   const nextConfig = {
+    hostComputerName: Object.prototype.hasOwnProperty.call(payload, 'host_computer_name')
+      ? cleanText(payload.host_computer_name)
+      : shouldPreferRemote
+        ? ''
+        : cleanText(currentConfig?.hostComputerName || ''),
+    hostWorkspacePath: cleanText(currentConfig?.hostWorkspacePath || ''),
+    preferredSharedWorkspacePath: cleanText(currentConfig?.preferredSharedWorkspacePath || ''),
     lanServiceEnabled: Object.prototype.hasOwnProperty.call(payload, 'enabled')
       ? Boolean(payload.enabled)
       : Boolean(currentConfig?.lanServiceEnabled),
@@ -9496,15 +9976,13 @@ function updateLanBridgeConfig(payload = {}) {
         ? payload.port
         : currentConfig?.lanServicePort
     ),
-    preferLanService: Object.prototype.hasOwnProperty.call(payload, 'prefer_remote')
-      ? Boolean(payload.prefer_remote)
-      : Boolean(currentConfig?.preferLanService)
+    preferLanService: shouldPreferRemote
   }
   writeWorkspaceConfig(nextConfig)
-  if (cleanText(currentConfig?.hostComputerName || '') === getClientName()) {
+  if (cleanText(nextConfig.hostComputerName || currentConfig?.hostComputerName || '') === getClientName()) {
     writeSharedWorkspaceInfo(workspacePath, {
-      hostComputerName: cleanText(currentConfig?.hostComputerName || ''),
-      hostWorkspacePath: cleanText(currentConfig?.hostWorkspacePath || workspacePath),
+      hostComputerName: cleanText(nextConfig.hostComputerName || currentConfig?.hostComputerName || ''),
+      hostWorkspacePath: cleanText(nextConfig.hostWorkspacePath || currentConfig?.hostWorkspacePath || workspacePath),
       lanServiceEnabled: nextConfig.lanServiceEnabled,
       lanServicePort: nextConfig.lanServicePort,
       lanServiceHost: nextConfig.lanServiceHost

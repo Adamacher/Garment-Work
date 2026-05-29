@@ -111,6 +111,19 @@
           />
         </router-view>
       </a-layout-content>
+
+      <nav v-if="isMobileLayout" class="ems-mobile-tabs" aria-label="移动端常用导航">
+        <button
+          v-for="item in mobileNavItems"
+          :key="item.path"
+          type="button"
+          :class="['ems-mobile-tabs__item', { 'ems-mobile-tabs__item--active': selectedPath === item.path }]"
+          @click="handleNavigate({ key: item.path })"
+        >
+          <span class="ems-mobile-tabs__dot"></span>
+          <span>{{ item.mobileLabel || item.label }}</span>
+        </button>
+      </nav>
     </a-layout>
   </a-layout>
 </template>
@@ -148,6 +161,22 @@ const session = computed(() => getStoredSession())
 const selectedPath = computed(() => route.path)
 const visibleNavItems = computed(() => navItems.filter((item) => hasFeatureAccess(session.value, item.feature)))
 const currentNavItem = computed(() => navItems.find((item) => item.path === route.path) || visibleNavItems.value[0] || navItems[0])
+const mobileNavItems = computed(() => {
+  const preferred = ['/dashboard', '/purchase', '/inventory', '/factory-dispatch', '/production']
+  return preferred
+    .map((path) => visibleNavItems.value.find((item) => item.path === path))
+    .filter(Boolean)
+    .map((item) => ({
+      ...item,
+      mobileLabel: ({
+        '/dashboard': '首页',
+        '/purchase': '采购',
+        '/inventory': '库存',
+        '/factory-dispatch': '出入仓',
+        '/production': '生产'
+      })[item.path]
+    }))
+})
 const sidebarStyle = computed(() => ({
   width: `${navCollapsed.value ? 0 : SIDEBAR_WIDTH}px`,
   minWidth: `${navCollapsed.value ? 0 : SIDEBAR_WIDTH}px`,
@@ -506,28 +535,149 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 900px) {
+  .ems-shell--mobile {
+    background:
+      radial-gradient(circle at 88% 0%, rgba(90, 200, 250, 0.24), transparent 30%),
+      linear-gradient(180deg, #f7fbff 0%, #eef7ff 100%);
+  }
+
   .ems-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
     height: auto;
-    padding: 14px;
-    flex-direction: column;
-    align-items: stretch;
+    min-height: 72px;
+    padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px;
+    flex-direction: row;
+    align-items: center;
+    border-bottom: 1px solid rgba(0, 122, 255, 0.08);
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(18px);
   }
 
   .ems-topbar__left,
   .ems-topbar__right {
-    justify-content: space-between;
+    justify-content: flex-start;
   }
 
   .ems-topbar__right {
-    flex-wrap: wrap;
+    margin-left: auto;
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+
+  .ems-topbar__title {
+    flex: 1;
+  }
+
+  .ems-topbar__toggle {
+    min-width: 46px;
+    width: 46px;
+    height: 40px;
+    padding: 0 !important;
+    border-radius: 16px !important;
+    font-size: 0;
+  }
+
+  .ems-topbar__toggle::before {
+    content: '≡';
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  .ems-page-title {
+    font-size: 17px;
+    letter-spacing: -0.02em;
   }
 
   .ems-page-subtitle {
+    max-width: 48vw;
     white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+  }
+
+  .ems-version {
+    min-width: 58px;
+    height: 30px;
+    padding: 0 9px;
+    background: #e9f3ff;
+    color: #0067d8;
+  }
+
+  .ems-user,
+  .ems-logout {
+    display: none;
   }
 
   .ems-content {
-    padding: 12px;
+    min-height: calc(100vh - 72px);
+    padding: 12px 10px calc(86px + env(safe-area-inset-bottom, 0px));
+    overflow-x: hidden;
+  }
+
+  .ems-mobile-tabs {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    z-index: 70;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+    padding: 8px;
+    border: 1px solid rgba(174, 205, 244, 0.72);
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 18px 42px rgba(30, 83, 142, 0.18);
+    backdrop-filter: blur(22px);
+  }
+
+  .ems-mobile-tabs__item {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+    min-height: 46px;
+    border: 0;
+    border-radius: 18px;
+    background: transparent;
+    color: #60728d;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .ems-mobile-tabs__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: #c9d8ea;
+  }
+
+  .ems-mobile-tabs__item--active {
+    background: linear-gradient(180deg, #eaf5ff 0%, #dcebff 100%);
+    color: #0067d8;
+  }
+
+  .ems-mobile-tabs__item--active .ems-mobile-tabs__dot {
+    background: #007aff;
+    box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.12);
+  }
+
+  .ems-mobile-drawer :deep(.ant-drawer-content) {
+    border-top-right-radius: 26px;
+    border-bottom-right-radius: 26px;
+    overflow: hidden;
+  }
+
+  .ems-mobile-drawer :deep(.ant-menu-item) {
+    height: 42px;
+    line-height: 42px;
+    margin: 6px 10px;
+    border-radius: 15px;
   }
 }
 

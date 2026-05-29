@@ -63,6 +63,12 @@
       </template>
     </MobileFilterPanel>
 
+    <div v-if="activeDispatchFilterChips.length" class="smart-filter-bar">
+      <span class="smart-filter-bar__label">当前筛选</span>
+      <a-tag v-for="chip in activeDispatchFilterChips" :key="chip" color="blue">{{ chip }}</a-tag>
+      <a-button size="small" @click="clearDispatchFilters">清空筛选</a-button>
+    </div>
+
     <a-card class="content-card" :bordered="false">
       <template #title>出仓入仓台账</template>
       <div class="helper-text">
@@ -663,6 +669,32 @@ const filterPlaceholder = computed(() => {
   }
   return labelMap[filterField.value] || labelMap.keyword
 })
+
+const stockScopeLabelMap = {
+  all: '全部库存',
+  warehouse: '只看仓库库存',
+  factory: '只看工厂库存'
+}
+
+const activeDispatchFilterChips = computed(() => {
+  const chips = []
+  if (keywordInput.value) chips.push(`关键词：${keywordInput.value}`)
+  if (supplierFilter.value) chips.push(`供应商：${supplierFilter.value}`)
+  if (factoryFilter.value) chips.push(`工厂：${factoryFilter.value}`)
+  if (stockScopeFilter.value !== 'all') chips.push(stockScopeLabelMap[stockScopeFilter.value] || stockScopeFilter.value)
+  if (dateRange.value?.filter(Boolean).length) chips.push(`日期：${dateRange.value.filter(Boolean).join(' 至 ')}`)
+  return chips
+})
+
+function clearDispatchFilters() {
+  filterField.value = 'keyword'
+  keywordInput.value = ''
+  supplierFilter.value = undefined
+  factoryFilter.value = undefined
+  stockScopeFilter.value = 'all'
+  dateRange.value = []
+  currentPage.value = 1
+}
 
 const filteredRows = computed(() => {
   const value = String(keyword.value || '').trim().toLowerCase()

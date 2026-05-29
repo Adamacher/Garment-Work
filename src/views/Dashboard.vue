@@ -4,7 +4,7 @@
       <div>
         <div class="smart-hero__eyebrow">智能工作台</div>
         <h1>今天先处理最重要的事</h1>
-        <p>系统会把待审核、库存预警、预领用异常和常用入口集中到这里，点击卡片即可跳转并自动筛选。</p>
+        <p>系统会把待审核、预领用异常和常用入口集中到这里，点击卡片即可跳转并自动筛选。</p>
       </div>
       <div class="smart-hero__actions">
         <a-button class="toolbar-refresh-btn" :loading="pageRefreshing" @click="refreshPage">刷新工作台</a-button>
@@ -55,7 +55,6 @@
         <div class="quick-action-grid">
           <a-button type="primary" @click="goWorkbench({ path: '/purchase', query: { action: 'create' } })">新增采购批次</a-button>
           <a-button type="primary" @click="goWorkbench({ path: '/production', query: { action: 'create' } })">新增生产单</a-button>
-          <a-button @click="goWorkbench({ path: '/inventory', query: { stock_scope: 'warning' } })">查看库存预警</a-button>
           <a-button @click="goWorkbench({ path: '/factory-dispatch', query: { stock_scope: 'warehouse' } })">查看仓库库存</a-button>
         </div>
         <div class="smart-tip-box">
@@ -98,6 +97,61 @@
         </a-descriptions>
       </a-card>
 
+      <a-card class="content-card remote-share-panel" :bordered="false">
+        <template #title>Tailscale 远程共享数据库</template>
+        <div class="dashboard-share-status">
+          <div class="dashboard-share-card">
+            <div class="dashboard-share-title">共享服务</div>
+            <div :class="['dashboard-share-value', lanConfig.runtime?.running ? 'is-on' : 'is-off']">
+              {{ lanConfig.runtime?.running ? '已开启' : '未开启' }}
+            </div>
+            <div class="dashboard-share-desc">
+              {{ lanConfig.runtime?.message || '本机可作为主机，把数据库通过 Tailscale 提供给其他电脑。' }}
+            </div>
+          </div>
+          <div class="dashboard-share-card">
+            <div class="dashboard-share-title">Tailscale 地址</div>
+            <div class="dashboard-share-copy">{{ tailscaleShareHost || '未检测到 Tailscale 地址' }}</div>
+            <div class="dashboard-share-desc">
+              主机电脑需要先打开 Tailscale，并保持本软件运行。
+            </div>
+          </div>
+          <div class="dashboard-share-card">
+            <div class="dashboard-share-title">当前连接</div>
+            <div :class="['dashboard-share-value', lanConfig.prefer_remote ? 'is-on' : '']">
+              {{ lanConfig.prefer_remote ? '远程数据库' : '本机数据库' }}
+            </div>
+            <div class="dashboard-share-desc">
+              {{ lanConfig.prefer_remote ? `正在连接：${lanConfig.host || '-'}` : '当前操作使用本机工作目录里的数据库。' }}
+            </div>
+          </div>
+        </div>
+
+        <div class="remote-share-actions">
+          <a-button type="primary" :loading="lanLoading === 'host'" @click="enableTailscaleHost">
+            本机作为主机共享
+          </a-button>
+          <a-button :disabled="!tailscaleShareHost" @click="copyTailscaleHost">复制 Tailscale 地址</a-button>
+          <a-button :loading="lanLoading === 'stop'" @click="stopTailscaleHost">关闭本机共享</a-button>
+        </div>
+
+        <div class="remote-connect-row">
+          <a-input
+            v-model:value="remoteHostInput"
+            allow-clear
+            placeholder="在其他电脑填写主机地址，例如：http://100.x.x.x:18680"
+          />
+          <a-button type="primary" :loading="lanLoading === 'connect'" @click="connectRemoteHost">
+            连接远程数据库
+          </a-button>
+          <a-button :loading="lanLoading === 'local'" @click="useLocalDatabase">切回本机数据库</a-button>
+        </div>
+
+        <div class="formula-box remote-share-tip">
+          主机电脑点击“本机作为主机共享”，其他电脑复制或填写主机的 Tailscale 地址后点击“连接远程数据库”。这不是旧的局域网共享目录，不需要映射网络盘。
+        </div>
+      </a-card>
+
       <a-card class="content-card" :bordered="false">
         <template #title>使用说明</template>
         <div class="formula-box">
@@ -115,7 +169,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { api, formatMoney } from '@/utils/api'
+import { api, checkRemoteHostHealth, formatMoney, normalizeRemoteHost } from '@/utils/api'
 
 const router = useRouter()
 
@@ -140,35 +194,54 @@ const workspaceInfo = reactive({
   storage_optimization_progress_percent: 0,
 })
 
+const lanConfig = reactive({
+  enabled: false,
+  port: 18680,
+  host: '',
+  host_computer_name: '',
+  prefer_remote: false,
+  is_host: false,
+  network: {
+    preferred_host: '',
+    tailscale_host: '',
+    tailscale_ip: '',
+    local_hosts: [],
+  },
+  runtime: {
+    running: false,
+    port: 0,
+    host: '',
+    message: '',
+  },
+})
+
 const currentVersion = ref('-')
 const pageRefreshing = ref(false)
 const smartLoading = ref(false)
 const autoLaunch = ref(false)
 const autoLaunchSupported = ref(false)
 const autoLaunchLoading = ref(false)
+const lanLoading = ref('')
+const remoteHostInput = ref('')
 const purchaseSnapshot = ref([])
 const productionSnapshot = ref([])
 const inventorySnapshot = ref({ materials: [], batches: [] })
 let optimizeStatusTimer = null
+
+const tailscaleShareHost = computed(() =>
+  lanConfig.network?.tailscale_host || lanConfig.host || lanConfig.network?.preferred_host || ''
+)
 
 const summaryItems = computed(() => [
   { key: 'materials', label: '物料档案', value: stats.materialsCount, note: '点击进入物料资料', route: { path: '/material' } },
   { key: 'garments', label: '成衣款数', value: stats.garmentsCount, note: '点击进入成衣管理', route: { path: '/style' } },
   { key: 'batches', label: '采购批次', value: stats.batchesCount, note: '点击查看采购单', route: { path: '/purchase' } },
   { key: 'production', label: '生产制单', value: stats.productionCount, note: '点击查看生产单', route: { path: '/production' } },
-  { key: '红色预警', label: '红色预警', value: stats.warningCount, note: '异常和预警汇总', route: { path: '/production', query: { only_warnings: '1' } } },
   { key: 'stockValue', label: '库存货值', value: formatMoney(stats.stockValue), note: '按库存均价计算', route: { path: '/inventory' } },
 ])
 
 const pendingPurchases = computed(() => purchaseSnapshot.value.filter((item) => String(item.document_status || 'draft') === 'submitted'))
 const pendingProductions = computed(() => productionSnapshot.value.filter((item) => String(item.document_status || 'draft') === 'submitted'))
-const inventoryWarnings = computed(() =>
-  (inventorySnapshot.value.materials || []).filter((item) =>
-    Number(item.available_after_prealloc_qty ?? item.current_stock_qty ?? 0) < -0.0001 ||
-    Number(item.factory_available_after_prealloc_qty ?? 0) < -0.0001 ||
-    Number(item.current_stock_qty ?? 0) < 0.0001
-  )
-)
 const preallocWarnings = computed(() =>
   (inventorySnapshot.value.materials || []).filter((item) => Number(item.pre_allocated_qty || 0) > 0 && Number(item.available_after_prealloc_qty || 0) < -0.0001)
 )
@@ -195,16 +268,6 @@ const smartCards = computed(() => [
     route: { path: '/production', query: { document_status: 'submitted' } }
   },
   {
-    key: 'inventory-warning',
-    label: '库存预警',
-    value: `${inventoryWarnings.value.length} 项`,
-    note: '含负库存、零库存和预领后不足',
-    tag: '库存',
-    tagColor: inventoryWarnings.value.length ? 'red' : 'green',
-    tone: inventoryWarnings.value.length ? 'danger' : 'safe',
-    route: { path: '/inventory', query: { stock_scope: 'warning' } }
-  },
-  {
     key: 'prealloc-warning',
     label: '预领用异常',
     value: `${preallocWarnings.value.length} 项`,
@@ -220,7 +283,6 @@ const smartTips = computed(() => {
   const tips = []
   if (pendingPurchases.value.length) tips.push(`有 ${pendingPurchases.value.length} 张采购单待审核，建议先确认图片和金额。`)
   if (pendingProductions.value.length) tips.push(`有 ${pendingProductions.value.length} 张生产单待审核，审核前请查看库存校验摘要。`)
-  if (inventoryWarnings.value.length) tips.push(`有 ${inventoryWarnings.value.length} 项库存需要关注，点击库存预警可直接筛选。`)
   if (!tips.length) tips.push('当前没有明显待办，库存与审核状态整体平稳。')
   return tips
 })
@@ -280,6 +342,18 @@ async function loadAutoLaunch() {
   }
 }
 
+async function loadLanConfig() {
+  try {
+    const result = await api.lan.getConfig()
+    Object.assign(lanConfig, result || {})
+    if (!remoteHostInput.value) {
+      remoteHostInput.value = result?.host || result?.network?.tailscale_host || result?.network?.preferred_host || ''
+    }
+  } catch {
+    // 远程共享状态不影响首页其他功能。
+  }
+}
+
 function stopOptimizeStatusPolling() {
   if (!optimizeStatusTimer) return
   clearInterval(optimizeStatusTimer)
@@ -302,7 +376,7 @@ function startOptimizeStatusPolling() {
 
 async function loadSecondaryInfo() {
   try {
-    await Promise.all([loadWorkspaceInfo(), loadAutoLaunch()])
+    await Promise.all([loadWorkspaceInfo(), loadAutoLaunch(), loadLanConfig()])
   } catch {
     // 低优先级信息失败时，不阻塞智能工作台。
   }
@@ -390,6 +464,95 @@ async function applyPatchPackage() {
     if (result) message.success(`补丁已开始应用，程序将自动重启到 ${result.version}`)
   } catch (error) {
     message.error(error.message || '应用补丁失败')
+  }
+}
+
+async function enableTailscaleHost() {
+  lanLoading.value = 'host'
+  try {
+    await api.db.setCurrentComputerAsHost?.()
+    const latest = await api.lan.getConfig()
+    const host = latest?.network?.tailscale_host || latest?.network?.preferred_host || latest?.host
+    const result = await api.lan.updateConfig({
+      enabled: true,
+      port: Number(latest?.port || 18680),
+      host,
+      prefer_remote: false,
+    })
+    Object.assign(lanConfig, result || {})
+    remoteHostInput.value = result?.network?.tailscale_host || result?.host || host || ''
+    message.success('Tailscale 远程共享数据库已开启，其他电脑可使用显示的地址连接')
+  } catch (error) {
+    message.error(error.message || '开启 Tailscale 远程共享失败')
+  } finally {
+    lanLoading.value = ''
+  }
+}
+
+async function stopTailscaleHost() {
+  lanLoading.value = 'stop'
+  try {
+    const result = await api.lan.updateConfig({ enabled: false, prefer_remote: false })
+    Object.assign(lanConfig, result || {})
+    message.success('已关闭本机远程共享服务')
+  } catch (error) {
+    message.error(error.message || '关闭远程共享失败')
+  } finally {
+    lanLoading.value = ''
+  }
+}
+
+async function connectRemoteHost() {
+  const host = normalizeRemoteHost(remoteHostInput.value)
+  if (!host) {
+    message.error('请填写主机的 Tailscale 地址，例如：http://100.x.x.x:18680')
+    return
+  }
+  lanLoading.value = 'connect'
+  try {
+    await checkRemoteHostHealth(host)
+    const result = await api.lan.updateConfig({
+      enabled: false,
+      host,
+      prefer_remote: true,
+      host_computer_name: '',
+    })
+    Object.assign(lanConfig, result || {})
+    remoteHostInput.value = host
+    await Promise.all([loadStats(), loadSmartData(), loadWorkspaceInfo()])
+    message.success('已连接远程共享数据库')
+  } catch (error) {
+    message.error(error.message || '连接远程数据库失败')
+  } finally {
+    lanLoading.value = ''
+  }
+}
+
+async function useLocalDatabase() {
+  lanLoading.value = 'local'
+  try {
+    const result = await api.lan.updateConfig({ prefer_remote: false })
+    Object.assign(lanConfig, result || {})
+    await Promise.all([loadStats(), loadSmartData(), loadWorkspaceInfo()])
+    message.success('已切回本机数据库')
+  } catch (error) {
+    message.error(error.message || '切回本机数据库失败')
+  } finally {
+    lanLoading.value = ''
+  }
+}
+
+async function copyTailscaleHost() {
+  const host = tailscaleShareHost.value
+  if (!host) {
+    message.error('当前没有可复制的 Tailscale 地址')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(host)
+    message.success('Tailscale 地址已复制')
+  } catch {
+    message.error(`复制失败，请手动复制：${host}`)
   }
 }
 
@@ -567,6 +730,27 @@ onUnmounted(() => {
 
 .workspace-desc {
   margin-top: 16px;
+}
+
+.remote-share-panel {
+  overflow: hidden;
+}
+
+.remote-share-actions,
+.remote-connect-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.remote-connect-row :deep(.ant-input) {
+  min-width: 320px;
+  flex: 1;
+}
+
+.remote-share-tip {
+  margin-top: 8px;
 }
 
 @media (max-width: 1100px) {
