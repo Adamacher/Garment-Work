@@ -41,7 +41,7 @@
       v-else
       class="ems-mobile-drawer"
       placement="left"
-      :width="236"
+      :width="300"
       :open="drawerOpen"
       :closable="false"
       @close="drawerOpen = false"
@@ -54,6 +54,8 @@
             <div class="ems-brand__subtitle">采购 生产 库存 一体化</div>
           </div>
         </div>
+
+        <div class="ems-brand__remote-pill">安卓远程版</div>
 
         <a-menu
           theme="light"
@@ -534,6 +536,10 @@ onBeforeUnmount(() => {
   background: #071d31;
 }
 
+.ems-brand__remote-pill {
+  display: none;
+}
+
 @media (max-width: 900px) {
   .ems-shell--mobile {
     background:
@@ -667,17 +673,108 @@ onBeforeUnmount(() => {
     box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.12);
   }
 
+  .ems-mobile-drawer :deep(.ant-drawer-mask) {
+    background: rgba(15, 23, 42, 0.58) !important;
+    backdrop-filter: blur(2px);
+  }
+
   .ems-mobile-drawer :deep(.ant-drawer-content) {
-    border-top-right-radius: 26px;
-    border-bottom-right-radius: 26px;
+    border-top-right-radius: 36px;
+    border-bottom-right-radius: 36px;
     overflow: hidden;
+    background:
+      radial-gradient(circle at 82% 4%, rgba(0, 122, 255, 0.12), transparent 28%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(244, 250, 255, 0.96)) !important;
+    box-shadow: 26px 0 80px rgba(15, 23, 42, 0.22);
+  }
+
+  .ems-mobile-drawer :deep(.ant-drawer-body) {
+    background: transparent !important;
+  }
+
+  .ems-sidebar__inner--drawer {
+    gap: 8px;
+    padding: max(18px, env(safe-area-inset-top, 0px)) 16px 18px;
+  }
+
+  .ems-sidebar__inner--drawer .ems-brand {
+    position: relative;
+    min-height: 112px;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 20px 8px 18px;
+    border-bottom: 1px solid rgba(0, 122, 255, 0.08);
+  }
+
+  .ems-sidebar__inner--drawer .ems-brand__mark {
+    width: 56px;
+    height: 56px;
+    border-radius: 22px;
+    font-size: 17px;
+  }
+
+  .ems-sidebar__inner--drawer .ems-brand__title {
+    max-width: 148px;
+    color: #1d1d1f;
+    font-size: 22px;
+    line-height: 1.22;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+  }
+
+  .ems-sidebar__inner--drawer .ems-brand__subtitle {
+    margin-top: 8px;
+    color: #6f7d8d;
+    font-size: 17px;
+    letter-spacing: -0.02em;
+  }
+
+  .ems-sidebar__inner--drawer .ems-brand__remote-pill {
+    position: absolute;
+    top: 28px;
+    right: 2px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    max-width: 104px;
+    padding: 9px 12px;
+    border-radius: 999px;
+    background: rgba(0, 122, 255, 0.12);
+    color: #0067d8;
+    font-size: 16px;
+    line-height: 1.18;
+    font-weight: 800;
+    text-align: center;
+    box-shadow: inset 0 0 0 1px rgba(0, 122, 255, 0.12);
+  }
+
+  .ems-sidebar__inner--drawer :deep(.ant-menu) {
+    border-inline-end: 0 !important;
+    background: transparent !important;
+  }
+
+  .ems-sidebar__inner--drawer :deep(.ant-menu-item) {
+    height: 58px;
+    line-height: 58px;
+    margin: 4px 0;
+    padding-inline: 24px !important;
+    border-radius: 18px;
+    color: #1d1d1f !important;
+    font-size: 20px;
+    font-weight: 500;
+  }
+
+  .ems-sidebar__inner--drawer :deep(.ant-menu-item-selected) {
+    color: #007aff !important;
+    background: rgba(0, 122, 255, 0.13) !important;
+    box-shadow: inset 0 0 0 1px rgba(0, 122, 255, 0.08);
   }
 
   .ems-mobile-drawer :deep(.ant-menu-item) {
-    height: 42px;
-    line-height: 42px;
-    margin: 6px 10px;
-    border-radius: 15px;
+    height: 58px;
+    line-height: 58px;
+    margin: 4px 0;
+    border-radius: 18px;
   }
 }
 

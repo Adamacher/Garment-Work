@@ -1265,9 +1265,14 @@ async function loadBaseData() {
     refreshProductionInventorySummary(form.id)
   ])
     .then(([materialsResult, garmentsResult, optionsResult]) => {
-      materials.value = materialsResult || []
-      garments.value = garmentsResult || []
-      optionLists.value = optionsResult || { factories: [], units: [], materialRoles: [] }
+      materials.value = Array.isArray(materialsResult) ? materialsResult : []
+      garments.value = Array.isArray(garmentsResult) ? garmentsResult : []
+      optionLists.value = {
+        factories: [],
+        units: [],
+        materialRoles: [],
+        ...(optionsResult && typeof optionsResult === 'object' ? optionsResult : {})
+      }
       baseDataLoadedAt.value = Date.now()
     })
     .finally(() => {

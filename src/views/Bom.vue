@@ -779,9 +779,14 @@ async function loadBaseData() {
       api.db.getMaterials(),
       api.db.getOptionLists()
     ])
-    garments.value = garmentResult || []
-    materials.value = materialResult || []
-    optionLists.value = optionResult || { factories: [] }
+    garments.value = Array.isArray(garmentResult) ? garmentResult : []
+    materials.value = Array.isArray(materialResult) ? materialResult : []
+    optionLists.value = {
+      factories: [],
+      units: [],
+      materialRoles: [],
+      ...(optionResult && typeof optionResult === 'object' ? optionResult : {})
+    }
   } catch (error) {
     message.error(error.message || '加载基础资料失败')
   }

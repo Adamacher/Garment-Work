@@ -319,7 +319,12 @@ async function loadSmartData() {
     ])
     purchaseSnapshot.value = Array.isArray(purchaseResult.value) ? purchaseResult.value : []
     productionSnapshot.value = Array.isArray(productionResult.value) ? productionResult.value : []
-    inventorySnapshot.value = inventoryResult.value || { materials: [], batches: [] }
+    const inventory = inventoryResult.value && typeof inventoryResult.value === 'object' ? inventoryResult.value : {}
+    inventorySnapshot.value = {
+      materials: Array.isArray(inventory.materials) ? inventory.materials : [],
+      batches: Array.isArray(inventory.batches) ? inventory.batches : [],
+      inTransit: Array.isArray(inventory.inTransit) ? inventory.inTransit : []
+    }
   } finally {
     smartLoading.value = false
   }

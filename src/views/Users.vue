@@ -160,7 +160,8 @@ function formatPermissions(permissions = []) {
 
 async function loadUsers() {
   try {
-    list.value = await api.auth.getUsers()
+    const result = await api.auth.getUsers()
+    list.value = Array.isArray(result) ? result : []
   } catch (error) {
     message.error(error.message || '加载账号失败')
   }

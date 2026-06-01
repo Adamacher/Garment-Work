@@ -1095,14 +1095,19 @@ async function loadList() {
       api.db.getOptionLists()
     ])
 
-    materials.value = materialList
-    optionLists.value = options
-    buildInventoryMaps(inventory)
+    const safeGarments = Array.isArray(garments) ? garments : []
+    materials.value = Array.isArray(materialList) ? materialList : []
+    optionLists.value = {
+      factories: [],
+      garmentCategories: [],
+      ...(options && typeof options === 'object' ? options : {})
+    }
+    buildInventoryMaps(inventory && typeof inventory === 'object' ? inventory : { materials: [], inTransit: [], batches: [] })
 
     const bomGroupMap = new Map()
     const pendingBomIds = []
 
-    for (const item of garments) {
+    for (const item of safeGarments) {
       if (String(item.cost_source || '') === 'completed_production_weighted'
         && Number(item.completed_weighted_qty || 0) > 0) {
         continue
@@ -1119,7 +1124,7 @@ async function loadList() {
       })
     }
 
-    const nextList = garments.map((item) => {
+    const nextList = safeGarments.map((item) => {
       const estimated = estimateBomCost(bomGroupMap.get(item.id) || [], item.process_fee)
 
       if (String(item.cost_source || '') === 'completed_production_weighted'

@@ -767,7 +767,11 @@ async function loadData() {
   try {
     const [result, options] = await Promise.all([api.db.getInventorySummary(), api.db.getOptionLists()])
     summary.batches = Array.isArray(result?.batches) ? result.batches : []
-    optionLists.value = options || { factories: [], warehouses: ['主仓库'] }
+    optionLists.value = {
+      factories: [],
+      warehouses: ['主仓库'],
+      ...(options && typeof options === 'object' ? options : {})
+    }
   } catch (error) {
     message.error(error?.message || '加载出仓入仓数据失败')
   } finally {

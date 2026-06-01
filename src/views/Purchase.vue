@@ -1898,8 +1898,14 @@ async function loadBaseData(force = false) {
   if (!force && materials.value.length && Date.now() - baseDataLoadedAt.value < 60000) return
   baseDataPromise = Promise.all([api.db.getMaterials(), api.db.getOptionLists()])
     .then(([materialList, options]) => {
-      materials.value = materialList || []
-      optionLists.value = options || { suppliers: [], units: [], factories: [], warehouses: [] }
+      materials.value = Array.isArray(materialList) ? materialList : []
+      optionLists.value = {
+        suppliers: [],
+        units: [],
+        factories: [],
+        warehouses: [],
+        ...(options && typeof options === 'object' ? options : {})
+      }
       baseDataLoadedAt.value = Date.now()
     })
     .finally(() => {
@@ -1924,7 +1930,7 @@ async function loadList() {
       limit: 1200
     })
     if (token === listLoadToken) {
-      const nextList = batches || []
+      const nextList = Array.isArray(batches) ? batches : []
       list.value = nextList
       selectedRowKeys.value = selectedRowKeys.value.filter((id) => nextList.some((item) => item.id === id))
     }

@@ -737,8 +737,16 @@ async function loadBaseData() {
   listLoading.value = true
   try {
     const [materialsResult, optionsResult] = await Promise.all([api.db.getMaterials(), api.db.getOptionLists()])
-    list.value = materialsResult
-    optionLists.value = optionsResult
+    list.value = Array.isArray(materialsResult) ? materialsResult : []
+    optionLists.value = {
+      materialMajorCategories: [],
+      materialCategories: [],
+      materialSubCategories: [],
+      materialLeafCategories: [],
+      suppliers: [],
+      units: [],
+      ...(optionsResult && typeof optionsResult === 'object' ? optionsResult : {})
+    }
   } catch (error) {
     message.error(error.message || '加载物料资料失败')
   } finally {

@@ -131,7 +131,8 @@ const columns = [
 async function loadList() {
   loading.value = true
   try {
-    list.value = await api.db.getAuditLogs({ limit: 120 })
+    const result = await api.db.getAuditLogs({ limit: 120 })
+    list.value = Array.isArray(result) ? result : []
   } catch (error) {
     message.error(error.message || '加载操作审计失败')
   } finally {

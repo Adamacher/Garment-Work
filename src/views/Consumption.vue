@@ -223,7 +223,8 @@ function resetForm() {
 }
 
 async function loadList() {
-  list.value = await api.db.getConsumptionRecords()
+  const result = await api.db.getConsumptionRecords()
+  list.value = Array.isArray(result) ? result : []
 }
 
 function openCreate() {

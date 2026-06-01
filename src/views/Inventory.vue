@@ -1228,10 +1228,10 @@ async function loadInventory() {
   loading.value = true
   try {
     const response = await api.db.getInventorySummary()
-    summary.summaryCards = response?.summaryCards || []
-    summary.materials = response?.materials || []
-    summary.inTransit = response?.inTransit || response?.inTransitBatches || []
-    summary.batches = response?.batches || []
+    summary.summaryCards = Array.isArray(response?.summaryCards) ? response.summaryCards : []
+    summary.materials = Array.isArray(response?.materials) ? response.materials : []
+    summary.inTransit = Array.isArray(response?.inTransit) ? response.inTransit : (Array.isArray(response?.inTransitBatches) ? response.inTransitBatches : [])
+    summary.batches = Array.isArray(response?.batches) ? response.batches : []
   } catch (error) {
     message.error(error?.message || '库存台账加载失败')
   } finally {

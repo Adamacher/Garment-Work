@@ -54,8 +54,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 const MOBILE_BREAKPOINT = 900
 const STORAGE_KEY = 'garment_mobile_filter_fab_position'
-const FAB_WIDTH = 88
-const FAB_HEIGHT = 44
+const FAB_WIDTH = 96
+const FAB_HEIGHT = 56
 const FAB_GAP = 16
 
 const open = ref(false)
@@ -266,12 +266,19 @@ onBeforeUnmount(() => {
 .mobile-filter-fab {
   position: fixed;
   z-index: 1200;
-  width: 88px;
-  height: 44px;
+  width: 96px;
+  height: 56px;
   border-radius: 999px;
-  box-shadow: 0 12px 30px rgba(24, 104, 255, 0.28);
+  font-size: 0;
+  font-weight: 800;
+  box-shadow: 0 16px 34px rgba(0, 122, 255, 0.3);
   touch-action: none;
   user-select: none;
+}
+
+.mobile-filter-fab::after {
+  content: '筛选';
+  font-size: 20px;
 }
 
 .mobile-filter-fab--dragging {

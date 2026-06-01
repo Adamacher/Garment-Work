@@ -81,6 +81,53 @@ const dbMethodNames = [
 
 const authMethodNames = ['login', 'getUsers', 'saveUser', 'deleteUser']
 
+const remoteArrayResultMethods = new Set([
+  'getMaterials',
+  'getGarments',
+  'getBomsByGarment',
+  'getPurchaseBatches',
+  'getInventoryMovements',
+  'getAuditLogs',
+  'getConsumptionRecords',
+  'getProductionOrders',
+])
+
+const defaultRemoteOptionLists = {
+  suppliers: [],
+  units: [],
+  factories: [],
+  warehouses: ['主仓库'],
+  garmentCategories: [],
+  materialMajorCategories: [],
+  materialCategories: [],
+  materialSubCategories: [],
+  materialLeafCategories: [],
+  materialRoles: [],
+}
+
+function normalizeRemoteResult(methodName, result) {
+  if (remoteArrayResultMethods.has(methodName)) {
+    return Array.isArray(result) ? result : []
+  }
+  if (methodName === 'getInventorySummary') {
+    const source = result && typeof result === 'object' ? result : {}
+    return {
+      materials: Array.isArray(source.materials) ? source.materials : [],
+      inTransit: Array.isArray(source.inTransit) ? source.inTransit : [],
+      batches: Array.isArray(source.batches) ? source.batches : [],
+      ...source,
+    }
+  }
+  if (methodName === 'getOptionLists') {
+    const source = result && typeof result === 'object' ? result : {}
+    return {
+      ...defaultRemoteOptionLists,
+      ...source,
+    }
+  }
+  return result
+}
+
 function safeStorageGet(key) {
   try {
     return window.localStorage.getItem(key)
@@ -211,7 +258,10 @@ function unsupportedDesktopOnly(featureName) {
 
 function createRemoteMethodGroup(methodNames, prefix) {
   return methodNames.reduce((result, methodName) => {
-    result[methodName] = (...args) => remoteInvoke(`${prefix}:${methodName}`, ...args)
+    result[methodName] = async (...args) => {
+      const response = await remoteInvoke(`${prefix}:${methodName}`, ...args)
+      return prefix === 'db' ? normalizeRemoteResult(methodName, response) : response
+    }
     return result
   }, {})
 }
