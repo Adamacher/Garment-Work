@@ -1,4 +1,4 @@
-import { createApp } from 'vue'
+import { createApp, h } from 'vue'
 import { createPinia } from 'pinia'
 import {
   App as AntApp,
@@ -67,36 +67,16 @@ function isIgnorableUiError(text) {
 function translateError(rawText) {
   const text = simplifyRemoteError(rawText || '').trim()
   if (!text) return { message: '操作失败', detail: '' }
-  if (/UNIQUE constraint failed: materials\.code/i.test(text)) {
-    return { message: '已存在该物料资料，请勿重复新增。', detail: text }
-  }
-  if (/UNIQUE constraint failed: users\.username/i.test(text)) {
-    return { message: '该账号已存在，请更换账号后再试。', detail: text }
-  }
-  if (/An object could not be cloned/i.test(text)) {
-    return { message: '数据格式异常，请关闭当前窗口后重试。', detail: text }
-  }
-  if (/UNIQUE constraint failed/i.test(text)) {
-    return { message: '数据已存在，请勿重复新增。', detail: text }
-  }
-  if (/FOREIGN KEY constraint failed/i.test(text)) {
-    return { message: '当前数据已被其他单据引用，暂时不能这样操作。', detail: text }
-  }
-  if (/database is locked|SQLITE_BUSY/i.test(text)) {
-    return { message: '数据库正在处理其他操作，请稍后重试。', detail: text }
-  }
-  if (/Missing named parameter/i.test(text)) {
-    return { message: '保存数据时缺少必要字段，请检查当前表单是否完整。', detail: text }
-  }
-  if (/no such column/i.test(text)) {
-    return { message: '当前数据库结构与程序版本不一致，请升级到最新版本后再试。', detail: text }
-  }
-  if (/Unexpected token|SyntaxError/i.test(text)) {
-    return { message: '程序执行时遇到语法异常，请联系管理员处理。', detail: text }
-  }
-  if (/No handler registered for/i.test(text)) {
-    return { message: '程序初始化未完成，请关闭软件后重新打开。', detail: text }
-  }
+  if (/UNIQUE constraint failed: materials\.code/i.test(text)) return { message: '已存在该物料资料，请勿重复新增。', detail: text }
+  if (/UNIQUE constraint failed: users\.username/i.test(text)) return { message: '该账号已存在，请更换账号后再试。', detail: text }
+  if (/An object could not be cloned/i.test(text)) return { message: '数据格式异常，请关闭当前窗口后重试。', detail: text }
+  if (/UNIQUE constraint failed/i.test(text)) return { message: '数据已存在，请勿重复新增。', detail: text }
+  if (/FOREIGN KEY constraint failed/i.test(text)) return { message: '当前数据已被其他单据引用，暂时不能这样操作。', detail: text }
+  if (/database is locked|SQLITE_BUSY/i.test(text)) return { message: '数据库正在处理其他操作，请稍后重试。', detail: text }
+  if (/Missing named parameter/i.test(text)) return { message: '保存数据时缺少必要字段，请检查当前表单是否完整。', detail: text }
+  if (/no such column/i.test(text)) return { message: '当前数据库结构与程序版本不一致，请升级到最新版本后再试。', detail: text }
+  if (/Unexpected token|SyntaxError/i.test(text)) return { message: '程序执行时遇到语法异常，请联系管理员处理。', detail: text }
+  if (/No handler registered for/i.test(text)) return { message: '程序初始化未完成，请关闭软件后重新打开。', detail: text }
   return { message: text, detail: '' }
 }
 
@@ -125,8 +105,6 @@ message.error = (content, duration, onClose) => {
   const { message: translatedMessage, detail } = translateError(rawText || content)
   return originalMessageError(detail ? `${translatedMessage}\n${detail}` : translatedMessage, duration, onClose)
 }
-
-import { h } from 'vue'
 
 const app = createApp(App)
 app.use(createPinia())
@@ -179,7 +157,7 @@ window.addEventListener('error', (event) => {
 })
 
 window.addEventListener('unhandledrejection', (event) => {
-  showErrorModal(event.reason || '页面运行异常')
+  showErrorModal(event.reason || '页面异步操作异常')
 })
 
 app.mount('#app')

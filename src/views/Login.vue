@@ -1,17 +1,30 @@
 <template>
   <div class="login-shell">
+    <div class="login-orb login-orb--blue"></div>
+    <div class="login-orb login-orb--cyan"></div>
+
     <div class="login-panel">
-      <div class="login-copy">
-        <div class="login-badge">{{ isBrowserRemoteMode ? 'Garment EMS Mobile' : 'Garment EMS' }}</div>
-        <h1 class="login-title">服装采购生产管理系统</h1>
-        <p class="login-subtitle">
-          {{
-            isBrowserRemoteMode
-              ? '当前为浏览器远程模式，请先填写主机地址，再使用主机上的账号密码登录。'
-              : '勾选记住账号密码后，程序下次启动会自动登录，无需每次重新手动输入。'
-          }}
-        </p>
-      </div>
+      <section class="login-hero">
+        <div class="login-brand">
+          <div class="login-brand__mark">□</div>
+          <div>
+            <h1>服装采购生产管理系统</h1>
+            <p>采购 · 生产 · 库存一体化管理</p>
+          </div>
+        </div>
+
+        <div class="login-hero-card">
+          <div class="login-badge">{{ isBrowserRemoteMode ? '安卓远程版' : 'Windows 桌面版' }}</div>
+          <h2>欢迎回来</h2>
+          <p>
+            {{
+              isBrowserRemoteMode
+                ? '请先填写主机地址，再使用主机电脑上的账号密码登录。'
+                : '勾选记住账号密码后，下次启动会自动登录，无需重复输入。'
+            }}
+          </p>
+        </div>
+      </section>
 
       <a-card class="login-card" :bordered="false">
         <a-form layout="vertical" @finish="login">
@@ -45,11 +58,7 @@
           <div class="login-options">
             <a-checkbox v-model:checked="form.remember">记住账号密码</a-checkbox>
             <span class="login-helper">
-              {{
-                isBrowserRemoteMode
-                  ? '主机地址和账号密码只保存在当前浏览器本地。'
-                  : '账号密码只保存在当前电脑本地。'
-              }}
+              {{ isBrowserRemoteMode ? '主机地址和账号密码仅保存在当前设备。' : '账号密码仅保存在当前电脑本地。' }}
             </span>
           </div>
 
@@ -161,50 +170,128 @@ async function login(silent = false) {
 
 <style scoped>
 .login-shell {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100vh;
   padding: 24px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 12% 12%, rgba(0, 122, 255, 0.16), transparent 30%),
+    radial-gradient(circle at 86% 18%, rgba(90, 200, 250, 0.22), transparent 28%),
+    linear-gradient(180deg, #f8fbff 0%, #eef6ff 100%);
+}
+
+.login-orb {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(4px);
+  opacity: 0.55;
+}
+
+.login-orb--blue {
+  width: 320px;
+  height: 320px;
+  left: -120px;
+  top: -110px;
+  background: rgba(0, 122, 255, 0.16);
+}
+
+.login-orb--cyan {
+  width: 360px;
+  height: 360px;
+  right: -140px;
+  bottom: -120px;
+  background: rgba(90, 200, 250, 0.18);
 }
 
 .login-panel {
-  width: min(960px, 100%);
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr);
+  gap: 28px;
+  width: min(1080px, 100%);
+  align-items: stretch;
 }
 
-.login-copy {
-  margin-bottom: 20px;
+.login-hero,
+.login-card {
+  border: 1px solid rgba(112, 135, 168, 0.16);
+  border-radius: 32px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 28px 80px rgba(34, 74, 122, 0.12);
+}
+
+.login-hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 460px;
+  padding: 34px;
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.login-brand__mark {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #2f7dff, #1664f5);
+  color: #fff;
+  font-size: 26px;
+  font-weight: 900;
+  box-shadow: 0 18px 34px rgba(0, 122, 255, 0.24);
+}
+
+.login-brand h1 {
+  margin: 0;
+  color: #0f2341;
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.login-brand p,
+.login-hero-card p {
+  margin: 6px 0 0;
+  color: #71819a;
+}
+
+.login-hero-card h2 {
+  margin: 18px 0 8px;
+  color: #0f2341;
+  font-size: 38px;
+  line-height: 1.1;
+  font-weight: 900;
+  letter-spacing: -0.05em;
 }
 
 .login-badge {
   display: inline-flex;
   align-items: center;
-  height: 32px;
-  padding: 0 12px;
+  height: 34px;
+  padding: 0 13px;
   border-radius: 999px;
-  background: rgba(47, 113, 255, 0.12);
-  color: #1d58de;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.login-title {
-  margin: 14px 0 8px;
-  color: #13253a;
-  font-size: 34px;
-  line-height: 1.15;
-}
-
-.login-subtitle {
-  margin: 0;
-  color: #667589;
-  font-size: 15px;
-  line-height: 1.7;
+  background: rgba(0, 122, 255, 0.1);
+  color: #0067d8;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .login-card {
-  border-radius: 24px;
-  box-shadow: 0 24px 60px rgba(17, 37, 61, 0.12);
+  padding: 18px;
+}
+
+.login-card :deep(.ant-card-body) {
+  padding: 18px;
 }
 
 .login-options {
@@ -212,7 +299,7 @@ async function login(silent = false) {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .login-helper {
@@ -221,13 +308,31 @@ async function login(silent = false) {
   text-align: right;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 760px) {
   .login-shell {
     padding: 16px;
   }
 
-  .login-title {
-    font-size: 28px;
+  .login-panel {
+    display: block;
+  }
+
+  .login-hero {
+    min-height: 0;
+    margin-bottom: 16px;
+    padding: 24px;
+  }
+
+  .login-hero-card {
+    margin-top: 32px;
+  }
+
+  .login-hero-card h2 {
+    font-size: 30px;
+  }
+
+  .login-brand h1 {
+    font-size: 22px;
   }
 
   .login-options {

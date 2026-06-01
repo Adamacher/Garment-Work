@@ -41,7 +41,7 @@
         </div>
         <template #footer>
           <div class="mobile-filter-drawer__footer">
-            <a-button @click="open = false">关闭</a-button>
+            <a-button type="primary" @click="open = false">完成</a-button>
           </div>
         </template>
       </a-drawer>
@@ -84,9 +84,7 @@ const fabStyle = computed(() => {
 })
 
 function getViewportBounds() {
-  if (typeof window === 'undefined') {
-    return { maxX: 0, maxY: 0 }
-  }
+  if (typeof window === 'undefined') return { maxX: 0, maxY: 0 }
   return {
     maxX: Math.max(FAB_GAP, window.innerWidth - FAB_WIDTH - FAB_GAP),
     maxY: Math.max(FAB_GAP, window.innerHeight - FAB_HEIGHT - FAB_GAP)
@@ -164,9 +162,7 @@ function moveDrag(clientX, clientY) {
   if (!dragging.value) return
   const deltaX = clientX - dragState.startX
   const deltaY = clientY - dragState.startY
-  if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
-    hasMoved.value = true
-  }
+  if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) hasMoved.value = true
   const next = clampFabPosition(dragState.originX + deltaX, dragState.originY + deltaY)
   fabX.value = next.x
   fabY.value = next.y
@@ -269,16 +265,11 @@ onBeforeUnmount(() => {
   width: 96px;
   height: 56px;
   border-radius: 999px;
-  font-size: 0;
+  font-size: 20px;
   font-weight: 800;
   box-shadow: 0 16px 34px rgba(0, 122, 255, 0.3);
   touch-action: none;
   user-select: none;
-}
-
-.mobile-filter-fab::after {
-  content: '筛选';
-  font-size: 20px;
 }
 
 .mobile-filter-fab--dragging {
@@ -287,16 +278,16 @@ onBeforeUnmount(() => {
 }
 
 .mobile-filter-drawer :deep(.ant-drawer-content) {
-  border-top-left-radius: 24px;
-  border-top-right-radius: 24px;
+  border-top-left-radius: 28px;
+  border-top-right-radius: 28px;
 }
 
 .mobile-filter-drawer :deep(.ant-drawer-header) {
-  padding: 16px 18px 8px;
+  padding: 18px 20px 10px;
 }
 
 .mobile-filter-drawer :deep(.ant-drawer-title) {
-  font-weight: 800;
+  font-weight: 900;
 }
 
 .mobile-filter-drawer :deep(.ant-drawer-body) {

@@ -57,15 +57,9 @@ watch(
 
 function commit(nextVisibleKeys, nextOrderKeys = orderKeys.value) {
   localKeys.value = normalizeVisibleKeys(nextVisibleKeys)
-  if (!localKeys.value.length && allKeys.value.length) {
-    localKeys.value = [allKeys.value[0]]
-  }
+  if (!localKeys.value.length && allKeys.value.length) localKeys.value = [allKeys.value[0]]
   orderKeys.value = normalizeOrderKeys(nextOrderKeys)
   emit('update:modelValue', [...localKeys.value])
-}
-
-function isChecked(key) {
-  return localKeys.value.includes(key)
 }
 
 function toggleKey(key, checked) {
@@ -117,45 +111,35 @@ function showModal() {
     v-model:open="open"
     :title="title"
     centered
-    width="460px"
+    width="520px"
     :footer="null"
     wrap-class-name="column-config-modal"
   >
     <div class="column-config-panel">
       <div class="column-config-head">
-        <span>勾选要显示的列，顺序可用上下按钮调整</span>
+        <span>勾选要显示的列，可用上下按钮调整顺序。</span>
         <a-button type="link" size="small" @click="resetColumns">重置</a-button>
       </div>
 
       <div class="column-config-bulk">
-        <label class="column-config-label">
-          <input
-            :checked="allChecked"
-            :indeterminate.prop="partiallyChecked"
-            class="column-config-checkbox"
-            type="checkbox"
-            @change="$event.target.checked ? selectAllColumns() : clearSelectedColumns()"
-          />
-          <span>全选 / 取消全选</span>
-        </label>
+        <a-checkbox
+          :checked="allChecked"
+          :indeterminate="partiallyChecked"
+          @change="$event.target.checked ? selectAllColumns() : clearSelectedColumns()"
+        >
+          全选 / 取消全选
+        </a-checkbox>
         <span>{{ checkedCount }} / {{ allKeys.length }} 列</span>
       </div>
 
       <div class="column-config-list">
-        <div
-          v-for="column in orderedColumns"
-          :key="column.key"
-          class="column-config-item"
-        >
-          <label class="column-config-label">
-            <input
-              :checked="isChecked(column.key)"
-              class="column-config-checkbox"
-              type="checkbox"
-              @change="toggleKey(column.key, $event.target.checked)"
-            />
-            <span>{{ column.title }}</span>
-          </label>
+        <div v-for="column in orderedColumns" :key="column.key" class="column-config-item">
+          <a-checkbox
+            :checked="localKeys.includes(column.key)"
+            @change="toggleKey(column.key, $event.target.checked)"
+          >
+            {{ column.title }}
+          </a-checkbox>
           <div class="column-config-actions">
             <button
               type="button"
@@ -176,6 +160,7 @@ function showModal() {
           </div>
         </div>
       </div>
+
       <div class="column-config-footer">
         <span>至少保留 1 列显示，修改会自动保存。</span>
         <a-button type="primary" @click="open = false">完成</a-button>
@@ -183,3 +168,69 @@ function showModal() {
     </div>
   </a-modal>
 </template>
+
+<style scoped>
+.column-config-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.column-config-head,
+.column-config-bulk,
+.column-config-footer,
+.column-config-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.column-config-head,
+.column-config-bulk {
+  color: #4f6078;
+  font-size: 13px;
+}
+
+.column-config-list {
+  display: grid;
+  gap: 8px;
+  max-height: 420px;
+  overflow: auto;
+  padding: 4px;
+}
+
+.column-config-item {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid rgba(0, 122, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.column-config-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.column-config-move {
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(0, 122, 255, 0.14);
+  border-radius: 10px;
+  background: #fff;
+  color: #0067d8;
+  cursor: pointer;
+}
+
+.column-config-move:disabled {
+  color: #b6c0ce;
+  cursor: not-allowed;
+}
+
+.column-config-footer {
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 122, 255, 0.1);
+  color: #7b8794;
+  font-size: 12px;
+}
+</style>
