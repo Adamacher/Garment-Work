@@ -1858,6 +1858,7 @@ function getRowExpectedUsageInMaterialUnit(row, size = '') {
 }
 
 function getRowInventoryWarning(row, factoryName = form.factory_name) {
+  if (isLockedDocument(form.document_status)) return ''
   if (!row?.material_id || row.supply_mode === 'factory_supply') return ''
   const unit = getRowMaterialUnit(row)
   const hasFactorySelected = Boolean(normalizeInventoryText(factoryName))

@@ -483,6 +483,10 @@ function normalizeFactoryFeePayload(rows = []) {
     })
 }
 
+function toCloneablePayload(payload) {
+  return JSON.parse(JSON.stringify(payload))
+}
+
 function addFactoryFeeRow() {
   factoryFeeRows.value.push(createFactoryFeeRow())
 }
@@ -703,10 +707,12 @@ async function confirmCreateProductionOrder() {
       loss_rate: Number(row.loss_rate || 0),
       material_role: row.material_role || '辅料',
       supply_mode: row.supply_mode || 'our_supply',
-      processing_requirements: Array.isArray(row.processing_requirements) ? [...row.processing_requirements] : [],
+      processing_requirements: Array.isArray(row.processing_requirements)
+        ? row.processing_requirements.map((item) => String(item || '').trim()).filter(Boolean)
+        : [],
       material_color: row.material_color || '',
       usage_mode: row.usage_mode || 'by_usage',
-      material_size_breakdown: Array.isArray(row.material_size_breakdown) ? row.material_size_breakdown : [],
+      material_size_breakdown: normalizeProductionSizeRows(Array.isArray(row.material_size_breakdown) ? row.material_size_breakdown : []),
       actual_issued_qty_raw: 0,
       actual_roll_count: 0,
       actual_issued_unit: normalizeUnit(row.material_unit || '米'),
@@ -715,7 +721,7 @@ async function confirmCreateProductionOrder() {
       current_unit_cost_per_meter: Number(row.current_unit_cost_per_meter || 0)
     }))
 
-    await api.db.saveProductionOrder({
+    const payload = {
       order_no: String(productionForm.order_no || '').trim(),
       garment_id: Number(selectedGarmentId.value),
       factory_name: String(productionForm.factory_name || '').trim(),
@@ -734,7 +740,8 @@ async function confirmCreateProductionOrder() {
       actual_output_qty: null,
       actual_size_breakdown: '[]',
       materials: materialsPayload
-    })
+    }
+    await api.db.saveProductionOrder(toCloneablePayload(payload))
     productionVisible.value = false
     message.success('已根据 BOM 生成草稿生产制单')
   } catch (error) {
