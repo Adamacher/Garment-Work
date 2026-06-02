@@ -992,7 +992,7 @@ function formatColorWithSize(row) {
 }
 
 function buildAdjustmentSummary(item) {
-  if (item.price_type === 'sample') return TEXT.normal
+  if (['sample', 'net'].includes(String(item.price_type || ''))) return TEXT.normal
   const type = item.adjustment_type || ''
   if (type === 'space_x') {
     return `绌?${formatQty(item.adjustment_x, 2)}`

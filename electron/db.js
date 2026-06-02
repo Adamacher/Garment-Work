@@ -1916,7 +1916,7 @@ function resolvePurchaseActualInputQty(payload = {}, material = {}) {
   )
   if (!inputQty) return 0
 
-  if (String(payload.price_type || '') === 'sample') {
+  if (['sample', 'net'].includes(String(payload.price_type || ''))) {
     return round(inputQty, 6)
   }
 
@@ -2045,7 +2045,7 @@ function buildAdjustmentPayloadFromMaterial(material = {}, payload = {}) {
 
 function buildAdjustmentSummary(record = {}) {
   const priceType = String(record.price_type || '').trim()
-  if (priceType === 'sample') return '-'
+  if (priceType === 'sample' || priceType === 'net') return '-'
   const adjustmentType = String(record.adjustment_type || record.material_adjustment_type || '').trim()
   if (adjustmentType === 'weight_gap') {
     const leftGap = Number(record.left_gap ?? record.material_left_gap ?? 0)
@@ -6420,6 +6420,62 @@ runStartupWriteStep('backfill:purchase_batches.updated_at', () => {
     `).run()
   }
 })
+runStartupWriteStep('backfill:purchase_batches.net_price_actual_qty', () => {
+  const rows = db.prepare(`
+    SELECT
+      pb.id,
+      pb.purchase_input_qty,
+      pb.purchase_input_unit,
+      pb.actual_input_qty,
+      pb.actual_input_unit,
+      pb.gross_qty,
+      pb.remaining_qty,
+      pb.unit,
+      m.unit AS material_unit,
+      m.meter_per_kg,
+      m.custom_conversion_from_qty,
+      m.custom_conversion_from_unit,
+      m.custom_conversion_to_qty,
+      m.custom_conversion_to_unit
+    FROM purchase_batches pb
+    LEFT JOIN materials m ON m.id=pb.material_id
+    WHERE TRIM(COALESCE(pb.price_type, ''))='net'
+      AND COALESCE(pb.purchase_input_qty, 0) > 0
+  `).all()
+  if (!rows.length) return
+
+  const update = db.prepare(`
+    UPDATE purchase_batches
+    SET actual_input_qty=?,
+        actual_input_unit=?,
+        gross_qty=?,
+        remaining_qty=?
+    WHERE id=?
+  `)
+
+  const tx = db.transaction(() => {
+    rows.forEach((row) => {
+      const inputQty = Number(row.purchase_input_qty || 0)
+      const inputUnit = normalizeUnit(row.purchase_input_unit || row.actual_input_unit || row.unit || row.material_unit || '米')
+      const stockUnit = normalizeUnit(row.material_unit || row.unit || inputUnit)
+      const material = {
+        ...row,
+        unit: stockUnit
+      }
+      const convertedQty = round(tryConvertQuantity(inputQty, inputUnit, stockUnit, material, inputQty), 6)
+      const oldGrossQty = Number(row.gross_qty || 0)
+      const delta = convertedQty - oldGrossQty
+      const nextRemainingQty = round(Math.max(Number(row.remaining_qty || 0) + delta, 0), 6)
+      const shouldUpdate =
+        Math.abs(Number(row.actual_input_qty || 0) - inputQty) > 0.000001 ||
+        normalizeUnit(row.actual_input_unit || '') !== inputUnit ||
+        Math.abs(oldGrossQty - convertedQty) > 0.000001
+      if (!shouldUpdate) return
+      update.run(round(inputQty, 6), inputUnit, convertedQty, nextRemainingQty, row.id)
+    })
+  })
+  tx()
+})
 ensureColumn('purchase_batch_factory_allocations', 'factory_name', "TEXT DEFAULT ''")
 ensureColumn('purchase_batch_factory_allocations', 'allocated_qty', 'REAL NOT NULL DEFAULT 0')
 ensureColumn('purchase_batch_factory_allocations', 'allocated_roll_count', 'REAL NOT NULL DEFAULT 0')
@@ -8464,13 +8520,13 @@ function getInventorySummary(params = {}) {
       const actualDisplayParts = summarizeBatchQtyByUnit(
         relatedBatches,
         (batch) => {
-          if (String(batch.price_type || '') === 'sample') {
+          if (['sample', 'net'].includes(String(batch.price_type || ''))) {
             return Number(batch.purchase_input_qty || batch.actual_input_qty || batch.gross_qty || 0)
           }
           return Number(batch.actual_input_qty || batch.purchase_input_qty || batch.gross_qty || 0)
         },
         (batch) => {
-          if (String(batch.price_type || '') === 'sample') {
+          if (['sample', 'net'].includes(String(batch.price_type || ''))) {
             return batch.purchase_input_unit || batch.actual_input_unit || batch.unit || item.unit
           }
           return batch.actual_input_unit || batch.purchase_input_unit || batch.unit || item.unit
@@ -8481,10 +8537,10 @@ function getInventorySummary(params = {}) {
         return sum + tryConvertQuantity(Number(batch.purchase_input_qty || 0), inputUnit, normalizeUnit(item.unit), batch, 0)
       }, 0), 4)
       const actualInputQty = round(relatedBatches.reduce((sum, batch) => {
-        const actualQty = String(batch.price_type || '') === 'sample'
+        const actualQty = ['sample', 'net'].includes(String(batch.price_type || ''))
           ? Number(batch.purchase_input_qty || batch.actual_input_qty || batch.gross_qty || 0)
           : Number(batch.actual_input_qty || batch.purchase_input_qty || batch.gross_qty || 0)
-        const actualUnit = String(batch.price_type || '') === 'sample'
+        const actualUnit = ['sample', 'net'].includes(String(batch.price_type || ''))
           ? normalizeUnit(batch.purchase_input_unit || batch.actual_input_unit || batch.unit || item.unit)
           : normalizeUnit(batch.actual_input_unit || batch.purchase_input_unit || batch.unit || item.unit)
         return sum + tryConvertQuantity(actualQty, actualUnit, normalizeUnit(item.unit), batch, 0)
@@ -8507,7 +8563,7 @@ function getInventorySummary(params = {}) {
       const availableAfterPreallocQty = round(factoryAvailableAfterPreallocQty + warehouseAvailableAfterPreallocQty, 4)
       const factoryUsedQty = round(relatedVisibleBatches.reduce((sum, batch) => sum + Number(batch.consumed_qty || 0), 0), 4)
       const sentToFactoryQty = round(factoryRemainingQty + factoryUsedQty, 4)
-      const shouldHideAdjustment = relatedBatches.length > 0 && relatedBatches.every((batch) => String(batch.price_type || '') === 'sample')
+      const shouldHideAdjustment = relatedBatches.length > 0 && relatedBatches.every((batch) => ['sample', 'net'].includes(String(batch.price_type || '')))
       return {
         ...item,
         material_code: cleanText(item.material_code || item.code),

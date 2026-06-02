@@ -1561,7 +1561,7 @@ function getActualInputQty(line) {
   const material = resolveLineMaterial(line)
   const purchaseQty = Number(line.purchase_input_qty || 0)
   if (!material || !purchaseQty) return 0
-  if (String(line.price_type || '') === 'sample') {
+  if (['sample', 'net'].includes(String(line.price_type || ''))) {
     return Number(purchaseQty.toFixed(6))
   }
   const adjustmentType = String(material.adjustment_type || 'none')
