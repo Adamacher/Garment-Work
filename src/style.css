@@ -903,6 +903,193 @@ body {
   }
 }
 
+/* Inner business controls: forms, editors and image uploaders. */
+.section-caption,
+.sortable-row__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-radius: 20px;
+}
+
+.section-caption {
+  padding: 14px 16px;
+  border: 1px solid var(--app-line);
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+}
+
+.section-caption__title,
+.sortable-row__title {
+  color: var(--app-ink) !important;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.section-caption__desc {
+  margin-top: 4px;
+  color: var(--app-muted) !important;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.bom-row,
+.option-row,
+.plan-editor-row,
+.size-grid__item,
+.cup-size-grid__item {
+  border-color: var(--app-line) !important;
+  border-radius: 22px !important;
+  background:
+    radial-gradient(circle at 96% 0%, rgba(90, 200, 250, 0.12), transparent 28%),
+    linear-gradient(180deg, #ffffff 0%, #f8fbff 100%) !important;
+}
+
+.bom-row {
+  padding: 18px !important;
+  box-shadow: var(--app-shadow-soft);
+}
+
+.sortable-row__bar {
+  margin-bottom: 12px;
+}
+
+.bom-row-hint,
+.inventory-size-summary {
+  padding: 12px 14px;
+  border: 1px solid #e4effb;
+  border-radius: 18px;
+  background: rgba(244, 249, 255, 0.78);
+}
+
+.bom-row-hint > div,
+.inventory-size-summary__line {
+  color: #5f7694;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.bom-row-hint__warning {
+  color: #e11d48 !important;
+  font-weight: 850;
+}
+
+.ant-form-item-label > label {
+  color: #48617d !important;
+  font-weight: 760;
+}
+
+.ant-form-item {
+  margin-bottom: 14px;
+}
+
+.mobile-filter-shell__filters .ant-btn,
+.toolbar .ant-btn,
+.erp-toolbar .ant-btn,
+.smart-toolbar .ant-btn {
+  height: 42px !important;
+  min-height: 42px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+}
+
+.mobile-filter-shell__filters .ant-select,
+.mobile-filter-shell__filters .ant-picker,
+.mobile-filter-shell__filters .ant-input-affix-wrapper,
+.mobile-filter-shell__filters .ant-input,
+.toolbar .ant-select,
+.toolbar .ant-picker,
+.toolbar .ant-input-affix-wrapper,
+.toolbar .ant-input,
+.erp-toolbar .ant-select,
+.erp-toolbar .ant-picker,
+.erp-toolbar .ant-input-affix-wrapper,
+.erp-toolbar .ant-input {
+  height: 42px !important;
+}
+
+.mobile-filter-shell__filters .ant-select-selector,
+.toolbar .ant-select-selector,
+.erp-toolbar .ant-select-selector {
+  display: flex !important;
+  align-items: center !important;
+}
+
+.image-drop-input__box {
+  min-height: 190px !important;
+  border: 1px dashed rgba(31, 115, 255, 0.34) !important;
+  border-radius: 24px !important;
+  background:
+    radial-gradient(circle at 92% 0%, rgba(90, 200, 250, 0.14), transparent 30%),
+    linear-gradient(180deg, #ffffff 0%, #f4f9ff 100%) !important;
+}
+
+.image-drop-input__title {
+  color: var(--app-ink) !important;
+  font-weight: 900 !important;
+}
+
+.image-drop-input__hint,
+.image-drop-input__tip {
+  color: var(--app-muted) !important;
+}
+
+.image-drop-input__actions .ant-btn,
+.multi-image-grid__tools .ant-btn {
+  min-height: 32px !important;
+  height: 32px !important;
+  padding-inline: 10px !important;
+  border-radius: 12px !important;
+  font-size: 12px !important;
+}
+
+.multi-image-grid {
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)) !important;
+}
+
+.multi-image-grid__item {
+  min-height: 150px !important;
+  border: 1px solid var(--app-line) !important;
+  border-radius: 20px !important;
+  background: #ffffff !important;
+}
+
+.multi-image-grid__preview {
+  height: 96px !important;
+  border: 1px solid #edf4fc;
+  background: #f8fbff !important;
+}
+
+.multi-image-grid__tools {
+  display: grid !important;
+  grid-template-columns: 1fr;
+  gap: 6px !important;
+}
+
+.multi-image-grid__remove {
+  border-color: rgba(255, 77, 79, 0.32) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+}
+
+.ant-tabs-tab {
+  border-radius: 999px !important;
+}
+
+.ant-tabs-tab-active {
+  background: rgba(31, 115, 255, 0.1) !important;
+}
+
+.ant-tabs-tab-btn {
+  color: #35577d !important;
+  font-weight: 750;
+}
+
+.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--app-blue) !important;
+}
+
 .ant-select-dropdown,
 .ant-picker-panel-container,
 .ant-dropdown-menu,

@@ -74,9 +74,12 @@ export async function transformImageDataUrl(dataUrl, options = {}) {
   const image = await loadImage(source)
   const width = Math.max(1, Number(image.width || 1))
   const height = Math.max(1, Number(image.height || 1))
+  const rotateDegrees = Number(options.rotateDegrees || 0)
+  const normalizedRotation = ((rotateDegrees % 360) + 360) % 360
+  const shouldSwapSize = normalizedRotation === 90 || normalizedRotation === 270
   const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
+  canvas.width = shouldSwapSize ? height : width
+  canvas.height = shouldSwapSize ? width : height
 
   const context = canvas.getContext('2d', { alpha: false })
   if (!context) return source
@@ -84,7 +87,12 @@ export async function transformImageDataUrl(dataUrl, options = {}) {
   const flipX = Boolean(options.flipX)
   const flipY = Boolean(options.flipY)
   context.fillStyle = '#ffffff'
-  context.fillRect(0, 0, width, height)
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  if (normalizedRotation) {
+    context.translate(canvas.width / 2, canvas.height / 2)
+    context.rotate((normalizedRotation * Math.PI) / 180)
+    context.translate(-width / 2, -height / 2)
+  }
   context.translate(flipX ? width : 0, flipY ? height : 0)
   context.scale(flipX ? -1 : 1, flipY ? -1 : 1)
   context.drawImage(image, 0, 0, width, height)

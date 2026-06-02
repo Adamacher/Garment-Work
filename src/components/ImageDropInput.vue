@@ -24,10 +24,10 @@
 
     <div class="image-drop-input__actions">
       <a-button size="small" @click="openFilePicker">选择图片</a-button>
-      <a-button v-if="modelValue" size="small" @click="flipCurrentImage('x')">左右翻转</a-button>
-      <a-button v-if="modelValue" size="small" @click="flipCurrentImage('y')">上下翻转</a-button>
+      <a-button v-if="modelValue" size="small" @click="rotateCurrentImage(-90)">左转90°</a-button>
+      <a-button v-if="modelValue" size="small" @click="rotateCurrentImage(90)">右转90°</a-button>
       <a-button v-if="modelValue" size="small" danger @click="emit('update:modelValue', '')">清空</a-button>
-      <span class="image-drop-input__tip">支持外部文件拖入和截图粘贴，保存前会自动压缩；可在粘贴框内翻转图片。</span>
+      <span class="image-drop-input__tip">支持拖入和截图粘贴；每次左转/右转旋转 90 度，四次回到原图。</span>
     </div>
 
     <input
@@ -108,20 +108,18 @@ async function onPaste(event) {
   const items = Array.from(event.clipboardData?.items || [])
   const imageItem = items.find((item) => String(item.type || '').startsWith('image/'))
   if (!imageItem) return
-  const file = imageItem.getAsFile()
-  await readFile(file)
+  await readFile(imageItem.getAsFile())
 }
 
-async function flipCurrentImage(axis = 'x') {
+async function rotateCurrentImage(degrees = 90) {
   if (!props.modelValue) return
   try {
     const next = await transformImageDataUrl(props.modelValue, {
-      flipX: axis === 'x',
-      flipY: axis === 'y'
+      rotateDegrees: degrees
     })
     emit('update:modelValue', next)
   } catch (error) {
-    message.error(error.message || '图片翻转失败')
+    message.error(error.message || '图片旋转失败')
   }
 }
 </script>

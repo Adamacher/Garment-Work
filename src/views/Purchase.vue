@@ -2638,8 +2638,8 @@ onActivated(async () => {
 
 .purchase-toolbar-control--keyword {
   width: 198px;
-  height: 32px !important;
-  min-height: 32px !important;
+  height: 42px !important;
+  min-height: 42px !important;
   display: flex;
   align-items: center;
 }
@@ -2654,16 +2654,16 @@ onActivated(async () => {
 .purchase-toolbar-keyword-input.ant-input-affix-wrapper,
 .purchase-toolbar-keyword-input :deep(.ant-input),
 .purchase-toolbar-keyword-input :deep(.ant-input-affix-wrapper) {
-  height: 32px !important;
-  max-height: 32px !important;
-  min-height: 32px !important;
-  line-height: 32px !important;
+  height: 42px !important;
+  max-height: 42px !important;
+  min-height: 42px !important;
+  line-height: 42px !important;
   padding-top: 0 !important;
   padding-bottom: 0 !important;
 }
 
 .purchase-toolbar-keyword-input :deep(.ant-input) {
-  line-height: 30px !important;
+  line-height: 40px !important;
 }
 
 .erp-page :deep(.mobile-filter-shell__actions) {
@@ -2715,8 +2715,8 @@ onActivated(async () => {
 .erp-page :deep(.mobile-filter-shell__filters .ant-input-affix-wrapper),
 .erp-page :deep(.mobile-filter-shell__filters .ant-select-selector),
 .erp-page :deep(.mobile-filter-shell__filters .ant-picker) {
-  min-height: 32px !important;
-  border-radius: 12px !important;
+  min-height: 42px !important;
+  border-radius: 15px !important;
 }
 
 .erp-page :deep(.ant-card),

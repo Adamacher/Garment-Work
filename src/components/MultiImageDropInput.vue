@@ -10,9 +10,9 @@
       @drop.prevent="onDrop"
       @paste="onPaste"
     >
-      <div v-if="modelValue.length" class="multi-image-grid">
+      <div v-if="images.length" class="multi-image-grid">
         <div
-          v-for="(item, index) in modelValue"
+          v-for="(item, index) in images"
           :key="`${index}-${String(item).slice(0, 20)}`"
           class="multi-image-grid__item"
         >
@@ -28,8 +28,8 @@
             />
           </a-popover>
           <div class="multi-image-grid__tools">
-            <a-button size="small" @click.stop="flipImage(index, 'x')">左右翻转</a-button>
-            <a-button size="small" @click.stop="flipImage(index, 'y')">上下翻转</a-button>
+            <a-button size="small" @click.stop="rotateImage(index, -90)">左转90°</a-button>
+            <a-button size="small" @click.stop="rotateImage(index, 90)">右转90°</a-button>
           </div>
           <a-button size="small" danger class="multi-image-grid__remove" @click.stop="removeImage(index)">删除</a-button>
         </div>
@@ -42,8 +42,8 @@
 
     <div class="image-drop-input__actions">
       <a-button size="small" @click="openFilePicker">选择图片</a-button>
-      <a-button v-if="modelValue.length" size="small" danger @click="emit('update:modelValue', [])">清空</a-button>
-      <span class="image-drop-input__tip">支持单张或多张图片，保存前会自动压缩；悬停缩略图自动查看完整图，点击可固定放大。</span>
+      <a-button v-if="images.length" size="small" danger @click="emit('update:modelValue', [])">清空</a-button>
+      <span class="image-drop-input__tip">支持一次选择多张，也可以继续追加粘贴；每次点击左转/右转会旋转 90 度，四次回到原图。</span>
     </div>
 
     <input
@@ -64,7 +64,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import { compressImageToDataUrl, transformImageDataUrl } from '@/utils/imageCompression'
 
@@ -85,6 +85,7 @@ const dragging = ref(false)
 const fileInput = ref(null)
 const previewVisible = ref(false)
 const previewImage = ref('')
+const images = computed(() => getImages())
 
 function openFilePicker() {
   fileInput.value?.click()
@@ -147,18 +148,17 @@ function removeImage(index) {
   emit('update:modelValue', next)
 }
 
-async function flipImage(index, axis = 'x') {
+async function rotateImage(index, degrees = 90) {
   const next = [...getImages()]
   const source = next[index]
   if (!source) return
   try {
     next[index] = await transformImageDataUrl(source, {
-      flipX: axis === 'x',
-      flipY: axis === 'y'
+      rotateDegrees: degrees
     })
     emit('update:modelValue', next)
   } catch (error) {
-    message.error(error.message || '图片翻转失败')
+    message.error(error.message || '图片旋转失败')
   }
 }
 
