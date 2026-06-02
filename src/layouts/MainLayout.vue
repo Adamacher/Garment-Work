@@ -8,7 +8,7 @@
           <div class="ems-menu-wrap">
             <a-menu theme="light" mode="inline" :selected-keys="[selectedPath]" @click="handleNavigate">
               <a-menu-item v-for="item in visibleNavItems" :key="item.path">
-                <span class="ems-menu-icon">{{ item.icon }}</span>
+                <FeatureIcon :name="item.icon" class="ems-menu-icon" />
                 <span class="ems-menu-label">{{ item.label }}</span>
               </a-menu-item>
             </a-menu>
@@ -42,7 +42,7 @@
 
         <a-menu theme="light" mode="inline" :selected-keys="[selectedPath]" @click="handleNavigate">
           <a-menu-item v-for="item in visibleNavItems" :key="item.path">
-            <span class="ems-menu-icon">{{ item.icon }}</span>
+            <FeatureIcon :name="item.icon" class="ems-menu-icon" />
             <span>{{ item.label }}</span>
           </a-menu-item>
         </a-menu>
@@ -99,7 +99,7 @@
           :class="['ems-mobile-tabs__item', { 'ems-mobile-tabs__item--active': selectedPath === item.path }]"
           @click="handleNavigate({ key: item.path })"
         >
-          <span class="ems-mobile-tabs__icon">{{ item.icon }}</span>
+          <FeatureIcon :name="item.icon" class="ems-mobile-tabs__icon" />
           <span>{{ item.mobileLabel || item.label }}</span>
         </button>
       </nav>
@@ -120,20 +120,59 @@ const SIDEBAR_WIDTH = 188
 const route = useRoute()
 const router = useRouter()
 
+const iconMap = {
+  dashboard: ['M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1v-8.5Z'],
+  material: ['M6 4h8l4 4v12H6V4Z', 'M14 4v5h5', 'M9 13h6M9 17h7'],
+  purchase: ['M5 6h2l1.5 9h8.5l2-6H8', 'M10 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm7 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z'],
+  inventory: ['M4 8 12 4l8 4-8 4-8-4Z', 'M4 12l8 4 8-4', 'M4 16l8 4 8-4'],
+  dispatch: ['M5 7h9v10H5z', 'M14 10h3l2 3v4h-5', 'M8 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm8 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z'],
+  flow: ['M7 7h8l-2-2', 'M15 17H7l2 2', 'M17 9a5 5 0 0 1-1 6M7 15a5 5 0 0 1 1-6'],
+  style: ['M8 5l4 3 4-3 3 3-2 3v9H7v-9L5 8l3-3Z', 'M10 7c.5 1 1.2 1.5 2 1.5S13.5 8 14 7'],
+  bom: ['M6 5h12v4H6z', 'M6 15h12v4H6z', 'M9 9v6m6-6v6'],
+  production: ['M6 7h12v10H6z', 'M9 4v3m6-3v3M9 17v3m6-3v3', 'M10 11h4'],
+  consumption: ['M5 19V9', 'M10 19V5', 'M15 19v-7', 'M20 19V8'],
+  options: ['M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z', 'M12 3v2m0 14v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M3 12h2m14 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'],
+  users: ['M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z', 'M3.5 20a5.5 5.5 0 0 1 11 0', 'M16 9a2.5 2.5 0 1 0 0-5', 'M15 14c2.8.2 5 2.4 5 5'],
+  audit: ['M7 4h10v16H7z', 'M9 8h6M9 12h6M9 16h4', 'M6 7H5v14h11v-1']
+}
+
+const FeatureIcon = defineComponent({
+  name: 'FeatureIcon',
+  props: {
+    name: {
+      type: String,
+      default: 'dashboard'
+    }
+  },
+  setup(props, { attrs }) {
+    return () => h('span', { ...attrs }, [
+      h('svg', {
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke: 'currentColor',
+        'stroke-width': 1.9,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+        'aria-hidden': 'true'
+      }, (iconMap[props.name] || iconMap.dashboard).map((d) => h('path', { d })))
+    ])
+  }
+})
+
 const navItems = [
-  { path: '/dashboard', feature: 'dashboard', icon: '⌂', label: '经营总览', title: '智能工作台', subtitle: '今天先处理最重要的事' },
-  { path: '/material', feature: 'material', icon: '▣', label: '物料资料', title: '物料资料', subtitle: '维护原料、颜色、尺码、价格规则与单位换算' },
-  { path: '/purchase', feature: 'purchase', icon: '▱', label: '采购批次', title: '采购批次', subtitle: '录入采购单、审核、拆批、合并、退回与供应商换货' },
-  { path: '/inventory', feature: 'inventory', icon: '⌑', label: '库存台账', title: '库存台账', subtitle: '查看采购累计、仓库结存、工厂结存与库存货值' },
-  { path: '/factory-dispatch', feature: 'inventory', icon: '⇄', label: '出仓入仓', title: '出仓入仓', subtitle: '维护原料出库到工厂、回收入仓与核实库存' },
-  { path: '/inventory-flow', feature: 'inventory_flow', icon: '↻', label: '库存流水', title: '库存流水', subtitle: '追踪每一笔入库、出库、回收、拆批与库存调整' },
-  { path: '/style', feature: 'style', icon: '衣', label: '成衣管理', title: '成衣管理', subtitle: '维护款号、图片、分类、工厂加工费与加权成本' },
-  { path: '/bom', feature: 'bom', icon: '书', label: 'BOM 配置', title: 'BOM 配置', subtitle: '配置成衣原料、颜色、供料方式、计料方式和单件用量' },
-  { path: '/production', feature: 'production', icon: '生', label: '生产制单', title: '生产制单', subtitle: '创建生产单并维护尺码数量、用料、库存校验与成本' },
-  { path: '/consumption', feature: 'consumption', icon: '图', label: '单耗分析', title: '单耗分析', subtitle: '按面料、款式、工厂分析单耗偏差与成本表现' },
-  { path: '/options', feature: 'options', icon: '设', label: '基础设置', title: '基础设置', subtitle: '维护系统选项、仓库、工厂、供应商与远程共享设置' },
-  { path: '/users', feature: 'users', icon: '人', label: '账号权限', title: '账号权限', subtitle: '维护登录账号、可用功能范围与启停状态' },
-  { path: '/audit', feature: 'audit', icon: '审', label: '操作审计', title: '操作审计', subtitle: '记录是谁、何时、改了什么，便于追踪问题和核查历史' }
+  { path: '/dashboard', feature: 'dashboard', icon: 'dashboard', label: '经营总览', title: '智能工作台', subtitle: '今天先处理最重要的事' },
+  { path: '/material', feature: 'material', icon: 'material', label: '物料资料', title: '物料资料', subtitle: '维护原料、颜色、尺码、价格规则与单位换算' },
+  { path: '/purchase', feature: 'purchase', icon: 'purchase', label: '采购批次', title: '采购批次', subtitle: '录入采购单、审核、拆批、合并、退回与供应商换货' },
+  { path: '/inventory', feature: 'inventory', icon: 'inventory', label: '库存台账', title: '库存台账', subtitle: '查看采购累计、仓库结存、工厂结存与库存货值' },
+  { path: '/factory-dispatch', feature: 'inventory', icon: 'dispatch', label: '出仓入仓', title: '出仓入仓', subtitle: '维护原料出库到工厂、回收入仓与核实库存' },
+  { path: '/inventory-flow', feature: 'inventory_flow', icon: 'flow', label: '库存流水', title: '库存流水', subtitle: '追踪每一笔入库、出库、回收、拆批与库存调整' },
+  { path: '/style', feature: 'style', icon: 'style', label: '成衣管理', title: '成衣管理', subtitle: '维护款号、图片、分类、工厂加工费与加权成本' },
+  { path: '/bom', feature: 'bom', icon: 'bom', label: 'BOM 配置', title: 'BOM 配置', subtitle: '配置成衣原料、颜色、供料方式、计料方式和单件用量' },
+  { path: '/production', feature: 'production', icon: 'production', label: '生产制单', title: '生产制单', subtitle: '创建生产单并维护尺码数量、用料、库存校验与成本' },
+  { path: '/consumption', feature: 'consumption', icon: 'consumption', label: '单耗分析', title: '单耗分析', subtitle: '按面料、款式、工厂分析单耗偏差与成本表现' },
+  { path: '/options', feature: 'options', icon: 'options', label: '基础设置', title: '基础设置', subtitle: '维护系统选项、仓库、工厂、供应商与远程共享设置' },
+  { path: '/users', feature: 'users', icon: 'users', label: '账号权限', title: '账号权限', subtitle: '维护登录账号、可用功能范围与启停状态' },
+  { path: '/audit', feature: 'audit', icon: 'audit', label: '操作审计', title: '操作审计', subtitle: '记录是谁、何时、改了什么，便于追踪问题和核查历史' }
 ]
 
 const BrandBlock = defineComponent({

@@ -65,7 +65,7 @@
     </div>
 
     <div class="workbench-grid workbench-grid--bottom">
-      <a-card class="content-card" :bordered="false">
+      <a-card class="content-card workspace-panel" :bordered="false">
         <template #title>工作目录与备份</template>
         <div class="dashboard-actions dashboard-actions--compact">
           <a-button type="primary" @click="chooseWorkspaceDirectory">更改当前工作目录</a-button>
@@ -81,20 +81,38 @@
           <a-button @click="applyPatchPackage">导入补丁包升级</a-button>
         </div>
 
-        <a-descriptions :column="1" bordered size="small" class="workspace-desc">
-          <a-descriptions-item label="当前版本">{{ currentVersion }}</a-descriptions-item>
-          <a-descriptions-item label="当前工作目录">{{ workspaceInfo.workspace_path || '加载中...' }}</a-descriptions-item>
-          <a-descriptions-item label="当前数据库文件">{{ workspaceInfo.database_path || '-' }}</a-descriptions-item>
-          <a-descriptions-item label="数据库大小">{{ workspaceInfo.file_size ? formatFileSize(workspaceInfo.file_size) : '-' }}</a-descriptions-item>
-          <a-descriptions-item label="每日自动备份">
-            {{ workspaceInfo.daily_backup_exists ? '今天已生成' : '今天尚未生成' }}
-            <span v-if="workspaceInfo.daily_backup_updated_at">，最近更新：{{ workspaceInfo.daily_backup_updated_at }}</span>
-          </a-descriptions-item>
-          <a-descriptions-item label="数据库瘦身">
-            {{ workspaceInfo.storage_optimization_stage || '未开始' }}
-            <span v-if="workspaceInfo.storage_optimization_running">，进度：{{ workspaceInfo.storage_optimization_progress_percent }}%</span>
-          </a-descriptions-item>
-        </a-descriptions>
+        <div class="workspace-info-grid">
+          <div class="workspace-info-card">
+            <span>当前版本</span>
+            <strong>{{ currentVersion }}</strong>
+          </div>
+          <div class="workspace-info-card workspace-info-card--wide">
+            <span>当前工作目录</span>
+            <strong>{{ workspaceInfo.workspace_path || '加载中...' }}</strong>
+          </div>
+          <div class="workspace-info-card workspace-info-card--wide">
+            <span>当前数据库文件</span>
+            <strong>{{ workspaceInfo.database_path || '-' }}</strong>
+          </div>
+          <div class="workspace-info-card">
+            <span>数据库大小</span>
+            <strong>{{ workspaceInfo.file_size ? formatFileSize(workspaceInfo.file_size) : '-' }}</strong>
+          </div>
+          <div class="workspace-info-card">
+            <span>每日自动备份</span>
+            <strong>
+              {{ workspaceInfo.daily_backup_exists ? '今天已生成' : '今天尚未生成' }}
+              <small v-if="workspaceInfo.daily_backup_updated_at">{{ workspaceInfo.daily_backup_updated_at }}</small>
+            </strong>
+          </div>
+          <div class="workspace-info-card">
+            <span>数据库瘦身</span>
+            <strong>
+              {{ workspaceInfo.storage_optimization_stage || '未开始' }}
+              <small v-if="workspaceInfo.storage_optimization_running">进度 {{ workspaceInfo.storage_optimization_progress_percent }}%</small>
+            </strong>
+          </div>
+        </div>
       </a-card>
 
       <a-card class="content-card remote-share-panel" :bordered="false">
@@ -650,6 +668,7 @@ onUnmounted(() => {
 
 .workbench-grid--bottom {
   align-items: start;
+  grid-template-columns: 1fr;
 }
 
 .smart-task-grid {
@@ -733,6 +752,54 @@ onUnmounted(() => {
   line-height: 1.7;
 }
 
+.workspace-panel :deep(.ant-card-body) {
+  display: grid;
+  gap: 14px;
+}
+
+.workspace-info-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.workspace-info-card {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #dce9fb;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f6fbff 100%);
+}
+
+.workspace-info-card--wide {
+  grid-column: span 3;
+}
+
+.workspace-info-card span {
+  display: block;
+  margin-bottom: 6px;
+  color: #6b7f98;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.workspace-info-card strong {
+  display: block;
+  color: #132946;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.55;
+  word-break: break-all;
+}
+
+.workspace-info-card small {
+  display: block;
+  margin-top: 3px;
+  color: #7287a0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .workspace-desc {
   margin-top: 16px;
 }
@@ -772,8 +839,13 @@ onUnmounted(() => {
 
 @media (max-width: 760px) {
   .smart-task-grid,
-  .quick-action-grid {
+  .quick-action-grid,
+  .workspace-info-grid {
     grid-template-columns: 1fr;
+  }
+
+  .workspace-info-card--wide {
+    grid-column: span 1;
   }
 }
 </style>

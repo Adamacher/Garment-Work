@@ -4259,6 +4259,37 @@ body {
   border-bottom: 1px solid var(--ems-border) !important;
 }
 
+/* Lightweight rendering guard: reduce ghosting on modal/drawer drag and heavy table scroll. */
+.ant-modal-mask,
+.ant-drawer-mask {
+  backdrop-filter: none !important;
+  background: rgba(15, 23, 42, 0.36) !important;
+}
+
+.ant-modal-content,
+.ant-drawer-content {
+  box-shadow: 0 18px 42px rgba(25, 48, 82, 0.16) !important;
+  transform: translateZ(0);
+}
+
+.ems-content,
+.ant-table-body,
+.erp-table-wrap,
+.smart-table-frame {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.content-card,
+.erp-filter-card,
+.page-summary-strip,
+.erp-toolbar,
+.toolbar,
+.formula-box,
+.dashboard-share-card {
+  box-shadow: 0 8px 20px rgba(31, 63, 103, 0.045) !important;
+}
+
 .ant-table-wrapper .ant-table-tbody > tr > td,
 .erp-dense-table .ant-table-tbody > tr > td {
   border-bottom: 1px solid rgba(0, 122, 255, 0.08) !important;
