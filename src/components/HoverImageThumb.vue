@@ -4,7 +4,9 @@
       <template #content>
         <img :src="src" class="inventory-image-preview inventory-image-preview--full" :alt="alt" />
       </template>
-      <img :src="src" class="inventory-image-thumb" :alt="alt" loading="lazy" />
+      <div class="inventory-image-hover-target">
+        <img :src="src" class="inventory-image-thumb" :alt="alt" loading="lazy" />
+      </div>
     </a-popover>
     <div v-else class="inventory-image-empty">{{ emptyText }}</div>
   </div>

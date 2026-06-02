@@ -269,6 +269,184 @@ body {
   z-index: 3000 !important;
 }
 
+/* v1.0.76 final interaction fix layer: keep selects clickable and inputs aligned. */
+.ant-select,
+.ant-picker,
+.ant-input-affix-wrapper,
+.ant-input,
+.ant-input-number {
+  box-sizing: border-box !important;
+}
+
+.ant-select:not(.ant-select-customize-input) {
+  min-height: 42px !important;
+  height: 42px !important;
+  display: inline-flex !important;
+  align-items: stretch !important;
+  vertical-align: top !important;
+}
+
+.ant-select:not(.ant-select-customize-input) .ant-select-selector {
+  width: 100% !important;
+  min-height: 42px !important;
+  height: 42px !important;
+  padding: 0 36px 0 14px !important;
+  display: flex !important;
+  align-items: center !important;
+  border: 1px solid rgba(31, 115, 255, 0.16) !important;
+  border-radius: 15px !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  box-shadow: none !important;
+}
+
+.ant-select-single .ant-select-selection-search {
+  inset-inline-start: 14px !important;
+  inset-inline-end: 36px !important;
+  height: 40px !important;
+  line-height: 40px !important;
+}
+
+.ant-select-single .ant-select-selection-search-input {
+  height: 40px !important;
+  line-height: 40px !important;
+}
+
+.ant-select-single .ant-select-selection-item,
+.ant-select-single .ant-select-selection-placeholder {
+  display: flex !important;
+  align-items: center !important;
+  min-height: 40px !important;
+  line-height: 40px !important;
+  padding-inline-end: 0 !important;
+}
+
+.ant-select .ant-select-arrow,
+.ant-select .ant-select-clear {
+  inset-inline-end: 14px !important;
+  z-index: 2 !important;
+}
+
+.ant-input,
+.ant-input-number,
+.ant-input-affix-wrapper,
+.ant-picker {
+  min-height: 42px !important;
+  height: 42px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  border: 1px solid rgba(31, 115, 255, 0.16) !important;
+  border-radius: 15px !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  vertical-align: top !important;
+}
+
+.ant-input-affix-wrapper > input.ant-input {
+  height: 38px !important;
+  min-height: 38px !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.ant-input-number .ant-input-number-input {
+  height: 40px !important;
+  line-height: 40px !important;
+}
+
+.ant-picker .ant-picker-input {
+  height: 40px !important;
+  align-items: center !important;
+}
+
+.ant-picker .ant-picker-input > input {
+  height: 40px !important;
+  line-height: 40px !important;
+}
+
+.toolbar-left,
+.toolbar-right,
+.toolbar-filters,
+.toolbar-actions,
+.erp-toolbar__filters,
+.erp-toolbar__actions,
+.mobile-filter-shell__filters,
+.smart-toolbar__filters,
+.smart-toolbar__actions {
+  align-items: flex-start !important;
+}
+
+.toolbar-left > *,
+.toolbar-right > *,
+.toolbar-filters > *,
+.toolbar-actions > *,
+.erp-toolbar__filters > *,
+.erp-toolbar__actions > *,
+.mobile-filter-shell__filters > *,
+.smart-toolbar__filters > *,
+.smart-toolbar__actions > * {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.ant-select-dropdown,
+.ant-dropdown,
+.ant-popover,
+.ant-picker-dropdown,
+.ant-tooltip {
+  z-index: 9999 !important;
+}
+
+.inventory-image-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  min-height: 56px;
+}
+
+.inventory-image-hover-target {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 58px;
+  padding: 5px;
+  border-radius: 14px;
+  cursor: zoom-in;
+  transition: background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.inventory-image-hover-target:hover {
+  background: rgba(31, 115, 255, 0.08);
+  box-shadow: 0 10px 24px rgba(31, 115, 255, 0.12);
+}
+
+.inventory-image-thumb {
+  width: 46px !important;
+  height: 46px !important;
+  object-fit: cover !important;
+  border-radius: 10px !important;
+  background: #f4f9ff !important;
+}
+
+.inventory-image-popover .ant-popover-inner {
+  padding: 8px !important;
+  border-radius: 18px !important;
+  background: #ffffff !important;
+  box-shadow: 0 24px 70px rgba(15, 38, 74, 0.24) !important;
+}
+
+.inventory-image-popover .ant-popover-inner-content {
+  padding: 0 !important;
+}
+
+.inventory-image-preview--full {
+  max-width: min(92vw, 980px) !important;
+  max-height: min(86vh, 760px) !important;
+  object-fit: contain !important;
+  border-radius: 14px !important;
+}
+
 /* Final Apple blue-white template layer. Keep this block last. */
 :root {
   --app-blue: #1f73ff;
