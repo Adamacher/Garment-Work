@@ -9,28 +9,22 @@
             <a-menu theme="light" mode="inline" :selected-keys="[selectedPath]" @click="handleNavigate">
               <a-menu-item v-for="item in visibleNavItems" :key="item.path">
                 <span class="ems-menu-icon">{{ item.icon }}</span>
-                <span>{{ item.label }}</span>
+                <span class="ems-menu-label">{{ item.label }}</span>
               </a-menu-item>
             </a-menu>
-          </div>
-
-          <div class="ems-sidebar__footer">
-            <button type="button" class="ems-sidebar-collapse" @click="toggleCollapsed">
-              <span>≪</span>
-              <span>收起菜单</span>
-            </button>
           </div>
         </div>
       </a-layout-sider>
 
       <button
-        v-if="navCollapsed"
         type="button"
-        class="ems-sidebar-restore"
+        class="ems-sidebar-float-toggle"
+        :class="{ 'ems-sidebar-float-toggle--collapsed': navCollapsed }"
+        :style="sidebarToggleStyle"
+        :aria-label="navCollapsed ? '展开菜单' : '收起菜单'"
         @click="toggleCollapsed"
       >
-        <span>☰</span>
-        <span>展开菜单</span>
+        <span>{{ navCollapsed ? '›' : '‹' }}</span>
       </button>
     </template>
 
@@ -121,7 +115,7 @@ import { clearStoredSession, getStoredSession, hasFeatureAccess } from '@/utils/
 
 const MOBILE_BREAKPOINT = 900
 const COLLAPSE_STORAGE_KEY = 'garment_ems_nav_collapsed'
-const SIDEBAR_WIDTH = 230
+const SIDEBAR_WIDTH = 188
 
 const route = useRoute()
 const router = useRouter()
@@ -130,7 +124,7 @@ const navItems = [
   { path: '/dashboard', feature: 'dashboard', icon: '⌂', label: '经营总览', title: '智能工作台', subtitle: '今天先处理最重要的事' },
   { path: '/material', feature: 'material', icon: '▣', label: '物料资料', title: '物料资料', subtitle: '维护原料、颜色、尺码、价格规则与单位换算' },
   { path: '/purchase', feature: 'purchase', icon: '▱', label: '采购批次', title: '采购批次', subtitle: '录入采购单、审核、拆批、合并、退回与供应商换货' },
-  { path: '/inventory', feature: 'inventory', icon: '⌂', label: '库存台账', title: '库存台账', subtitle: '查看采购累计、仓库结存、工厂结存与库存货值' },
+  { path: '/inventory', feature: 'inventory', icon: '⌑', label: '库存台账', title: '库存台账', subtitle: '查看采购累计、仓库结存、工厂结存与库存货值' },
   { path: '/factory-dispatch', feature: 'inventory', icon: '⇄', label: '出仓入仓', title: '出仓入仓', subtitle: '维护原料出库到工厂、回收入仓与核实库存' },
   { path: '/inventory-flow', feature: 'inventory_flow', icon: '↻', label: '库存流水', title: '库存流水', subtitle: '追踪每一笔入库、出库、回收、拆批与库存调整' },
   { path: '/style', feature: 'style', icon: '衣', label: '成衣管理', title: '成衣管理', subtitle: '维护款号、图片、分类、工厂加工费与加权成本' },
@@ -152,7 +146,7 @@ const BrandBlock = defineComponent({
   },
   setup(props) {
     return () => h('div', { class: 'ems-brand' }, [
-      h('div', { class: 'ems-brand__mark' }, '□'),
+      h('div', { class: 'ems-brand__mark' }, 'GM'),
       h('div', { class: 'ems-brand__copy' }, [
         h('div', { class: 'ems-brand__title' }, '服装采购生产管理系统'),
         h('div', { class: 'ems-brand__subtitle' }, '采购 · 生产 · 库存一体化管理')
@@ -188,6 +182,9 @@ const sidebarStyle = computed(() => ({
   maxWidth: `${navCollapsed.value ? 0 : SIDEBAR_WIDTH}px`,
   flex: `0 0 ${navCollapsed.value ? 0 : SIDEBAR_WIDTH}px`
 }))
+const sidebarToggleStyle = computed(() => ({
+  left: `${navCollapsed.value ? 0 : SIDEBAR_WIDTH}px`
+}))
 
 const isMobileLayout = ref(false)
 const drawerOpen = ref(false)
@@ -206,7 +203,7 @@ function writeCollapsedState(value) {
   try {
     window.localStorage.setItem(COLLAPSE_STORAGE_KEY, value ? '1' : '0')
   } catch {
-    // ignore
+    // ignore storage failures
   }
 }
 
@@ -278,10 +275,10 @@ onBeforeUnmount(() => {
 }
 
 .ems-sidebar {
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.92) !important;
+  overflow: visible;
+  background: rgba(255, 255, 255, 0.94) !important;
   border-right: 1px solid rgba(112, 135, 168, 0.16);
-  box-shadow: 10px 0 34px rgba(34, 74, 122, 0.08);
+  box-shadow: 8px 0 28px rgba(34, 74, 122, 0.06);
   transition:
     width 0.22s ease,
     min-width 0.22s ease,
@@ -292,17 +289,18 @@ onBeforeUnmount(() => {
 .ems-sidebar__inner {
   display: flex;
   flex-direction: column;
-  width: 230px;
+  width: 188px;
   height: 100%;
+  overflow: hidden;
 }
 
 .ems-brand {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 96px;
-  padding: 22px 20px;
+  gap: 9px;
+  min-height: 86px;
+  padding: 16px 12px 14px;
   border-bottom: 1px solid rgba(112, 135, 168, 0.14);
 }
 
@@ -310,14 +308,15 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 46px;
-  height: 46px;
-  border-radius: 14px;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 13px;
   background: linear-gradient(135deg, #2f7dff 0%, #1664f5 100%);
   color: #fff;
-  font-size: 22px;
+  font-size: 13px;
   font-weight: 900;
-  box-shadow: 0 16px 30px rgba(0, 122, 255, 0.24);
+  box-shadow: 0 14px 26px rgba(0, 122, 255, 0.22);
 }
 
 .ems-brand__copy {
@@ -326,26 +325,26 @@ onBeforeUnmount(() => {
 
 .ems-brand__title {
   color: #0f2341;
-  font-size: 20px;
-  font-weight: 800;
-  line-height: 1.18;
-  letter-spacing: -0.04em;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
 }
 
 .ems-brand__subtitle {
-  margin-top: 6px;
+  margin-top: 4px;
   color: #71819a;
-  font-size: 13px;
+  font-size: 11px;
   line-height: 1.35;
 }
 
 .ems-brand__remote-pill {
   margin-left: auto;
-  padding: 8px 11px;
+  padding: 7px 10px;
   border-radius: 999px;
   background: rgba(0, 122, 255, 0.1);
   color: #0067d8;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1.2;
   text-align: center;
@@ -355,7 +354,7 @@ onBeforeUnmount(() => {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 18px 16px;
+  padding: 14px 10px 18px;
 }
 
 .ems-menu-wrap :deep(.ant-menu),
@@ -368,15 +367,25 @@ onBeforeUnmount(() => {
 .ems-sidebar__inner--drawer :deep(.ant-menu-item) {
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 46px;
-  line-height: 46px;
-  margin: 6px 0;
-  padding-inline: 14px !important;
-  border-radius: 16px;
+  gap: 9px;
+  height: 42px;
+  line-height: 42px;
+  margin: 4px 0;
+  padding-inline: 10px !important;
+  border-radius: 15px;
   color: #243955 !important;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 780;
+}
+
+.ems-menu-wrap :deep(.ant-menu-title-content) {
+  min-width: 0;
+}
+
+.ems-menu-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ems-menu-wrap :deep(.ant-menu-item:hover),
@@ -399,10 +408,11 @@ onBeforeUnmount(() => {
   justify-content: center;
   width: 22px;
   height: 22px;
+  flex: 0 0 22px;
   border-radius: 8px;
   color: #4f6b91;
-  font-size: 13px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .ems-menu-wrap :deep(.ant-menu-item-selected) .ems-menu-icon,
@@ -411,35 +421,37 @@ onBeforeUnmount(() => {
   background: #2f7dff;
 }
 
-.ems-sidebar__footer {
-  padding: 14px 18px 18px;
-  border-top: 1px solid rgba(112, 135, 168, 0.12);
-}
-
-.ems-sidebar-collapse,
-.ems-sidebar-restore {
+.ems-sidebar-float-toggle {
+  position: fixed;
+  top: 104px;
+  z-index: 120;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  width: 100%;
-  height: 42px;
-  border: 1px solid rgba(0, 122, 255, 0.12);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.86);
-  color: #5f7190;
-  font-weight: 700;
+  width: 30px;
+  height: 58px;
+  padding: 0;
+  border: 1px solid rgba(31, 115, 255, 0.18);
+  border-left: 0;
+  border-radius: 0 16px 16px 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(235, 246, 255, 0.94));
+  color: #1769e8;
+  font-size: 26px;
+  font-weight: 900;
   cursor: pointer;
+  box-shadow: 10px 12px 28px rgba(34, 74, 122, 0.14);
+  transform: translateX(-1px);
+  transition: left 0.22s ease, background 0.18s ease, box-shadow 0.18s ease;
 }
 
-.ems-sidebar-restore {
-  position: fixed;
-  left: 18px;
-  bottom: 18px;
-  z-index: 80;
-  width: auto;
-  padding: 0 14px;
-  box-shadow: 0 16px 36px rgba(34, 74, 122, 0.14);
+.ems-sidebar-float-toggle:hover {
+  background: linear-gradient(180deg, #ffffff, #e5f3ff);
+  box-shadow: 12px 16px 34px rgba(34, 74, 122, 0.18);
+}
+
+.ems-sidebar-float-toggle--collapsed {
+  border-left: 1px solid rgba(31, 115, 255, 0.18);
+  transform: translateX(0);
 }
 
 .ems-main {
@@ -453,9 +465,9 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  height: 96px;
+  height: 88px;
   line-height: normal;
-  padding: 18px 28px;
+  padding: 16px 28px;
   background: rgba(255, 255, 255, 0.82);
   border-bottom: 1px solid rgba(112, 135, 168, 0.16);
   box-shadow: 0 12px 34px rgba(34, 74, 122, 0.06);
@@ -534,8 +546,8 @@ onBeforeUnmount(() => {
 }
 
 .ems-content {
-  min-height: calc(100vh - 96px);
-  padding: 32px 34px 40px;
+  min-height: calc(100vh - 88px);
+  padding: 28px 30px 38px;
   overflow: auto;
 }
 
