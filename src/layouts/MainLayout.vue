@@ -8,7 +8,7 @@
           <div class="ems-menu-wrap">
             <a-menu theme="light" mode="inline" :selected-keys="[selectedPath]" @click="handleNavigate">
               <a-menu-item v-for="item in visibleNavItems" :key="item.path">
-                <FeatureIcon :name="item.icon" class="ems-menu-icon" />
+                <AppIcon :name="item.icon" class="ems-menu-icon" />
                 <span class="ems-menu-label">{{ item.label }}</span>
               </a-menu-item>
             </a-menu>
@@ -42,7 +42,7 @@
 
         <a-menu theme="light" mode="inline" :selected-keys="[selectedPath]" @click="handleNavigate">
           <a-menu-item v-for="item in visibleNavItems" :key="item.path">
-            <FeatureIcon :name="item.icon" class="ems-menu-icon" />
+            <AppIcon :name="item.icon" class="ems-menu-icon" />
             <span>{{ item.label }}</span>
           </a-menu-item>
         </a-menu>
@@ -99,7 +99,7 @@
           :class="['ems-mobile-tabs__item', { 'ems-mobile-tabs__item--active': selectedPath === item.path }]"
           @click="handleNavigate({ key: item.path })"
         >
-          <FeatureIcon :name="item.icon" class="ems-mobile-tabs__icon" />
+          <AppIcon :name="item.icon" class="ems-mobile-tabs__icon" />
           <span>{{ item.mobileLabel || item.label }}</span>
         </button>
       </nav>
@@ -110,6 +110,7 @@
 <script setup>
 import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import AppIcon from '@/components/AppIcon.vue'
 import { api } from '@/utils/api'
 import { clearStoredSession, getStoredSession, hasFeatureAccess } from '@/utils/auth'
 
@@ -119,45 +120,6 @@ const SIDEBAR_WIDTH = 188
 
 const route = useRoute()
 const router = useRouter()
-
-const iconMap = {
-  dashboard: ['M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1v-8.5Z'],
-  material: ['M6 4h8l4 4v12H6V4Z', 'M14 4v5h5', 'M9 13h6M9 17h7'],
-  purchase: ['M5 6h2l1.5 9h8.5l2-6H8', 'M10 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm7 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z'],
-  inventory: ['M4 8 12 4l8 4-8 4-8-4Z', 'M4 12l8 4 8-4', 'M4 16l8 4 8-4'],
-  dispatch: ['M5 7h9v10H5z', 'M14 10h3l2 3v4h-5', 'M8 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm8 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z'],
-  flow: ['M7 7h8l-2-2', 'M15 17H7l2 2', 'M17 9a5 5 0 0 1-1 6M7 15a5 5 0 0 1 1-6'],
-  style: ['M8 5l4 3 4-3 3 3-2 3v9H7v-9L5 8l3-3Z', 'M10 7c.5 1 1.2 1.5 2 1.5S13.5 8 14 7'],
-  bom: ['M6 5h12v4H6z', 'M6 15h12v4H6z', 'M9 9v6m6-6v6'],
-  production: ['M6 7h12v10H6z', 'M9 4v3m6-3v3M9 17v3m6-3v3', 'M10 11h4'],
-  consumption: ['M5 19V9', 'M10 19V5', 'M15 19v-7', 'M20 19V8'],
-  options: ['M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z', 'M12 3v2m0 14v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M3 12h2m14 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'],
-  users: ['M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z', 'M3.5 20a5.5 5.5 0 0 1 11 0', 'M16 9a2.5 2.5 0 1 0 0-5', 'M15 14c2.8.2 5 2.4 5 5'],
-  audit: ['M7 4h10v16H7z', 'M9 8h6M9 12h6M9 16h4', 'M6 7H5v14h11v-1']
-}
-
-const FeatureIcon = defineComponent({
-  name: 'FeatureIcon',
-  props: {
-    name: {
-      type: String,
-      default: 'dashboard'
-    }
-  },
-  setup(props, { attrs }) {
-    return () => h('span', { ...attrs }, [
-      h('svg', {
-        viewBox: '0 0 24 24',
-        fill: 'none',
-        stroke: 'currentColor',
-        'stroke-width': 1.9,
-        'stroke-linecap': 'round',
-        'stroke-linejoin': 'round',
-        'aria-hidden': 'true'
-      }, (iconMap[props.name] || iconMap.dashboard).map((d) => h('path', { d })))
-    ])
-  }
-})
 
 const navItems = [
   { path: '/dashboard', feature: 'dashboard', icon: 'dashboard', label: '经营总览', title: '智能工作台', subtitle: '今天先处理最重要的事' },
@@ -185,7 +147,10 @@ const BrandBlock = defineComponent({
   },
   setup(props) {
     return () => h('div', { class: 'ems-brand' }, [
-      h('div', { class: 'ems-brand__mark' }, 'GM'),
+      h('div', { class: 'ems-brand__mark' }, [
+        h(AppIcon, { name: 'app', class: 'ems-brand__mark-icon' }),
+        h('span', { class: 'ems-brand__mark-text' }, 'GM')
+      ]),
       h('div', { class: 'ems-brand__copy' }, [
         h('div', { class: 'ems-brand__title' }, '服装采购生产管理系统'),
         h('div', { class: 'ems-brand__subtitle' }, '采购 · 生产 · 库存一体化管理')
@@ -347,15 +312,29 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-direction: column;
+  gap: 1px;
   width: 38px;
   height: 38px;
   flex: 0 0 38px;
   border-radius: 13px;
   background: linear-gradient(135deg, #2f7dff 0%, #1664f5 100%);
   color: #fff;
-  font-size: 13px;
+  font-size: 10px;
   font-weight: 900;
   box-shadow: 0 14px 26px rgba(0, 122, 255, 0.22);
+}
+
+.ems-brand__mark-icon {
+  width: 20px;
+  height: 17px;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.ems-brand__mark-text {
+  display: block;
+  line-height: 1;
+  letter-spacing: -0.08em;
 }
 
 .ems-brand__copy {
@@ -452,6 +431,18 @@ onBeforeUnmount(() => {
   color: #4f6b91;
   font-size: 12px;
   font-weight: 900;
+}
+
+.ems-menu-icon :deep(svg),
+.ems-mobile-tabs__icon :deep(svg),
+.ems-brand__mark-icon :deep(svg) {
+  width: 100%;
+  height: 100%;
+  display: block;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .ems-menu-wrap :deep(.ant-menu-item-selected) .ems-menu-icon,

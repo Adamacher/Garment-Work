@@ -20,6 +20,7 @@
         class="page-summary-strip__item smart-stat-card"
         @click="goWorkbench(item.route)"
       >
+        <AppIcon :name="item.icon" class="smart-stat-card__icon" />
         <div class="page-summary-strip__label">{{ item.label }}</div>
         <div class="page-summary-strip__value">{{ item.value }}</div>
         <div class="page-summary-strip__note">{{ item.note }}</div>
@@ -41,7 +42,10 @@
             @click="goWorkbench(card.route)"
           >
             <div class="smart-task-card__top">
-              <span>{{ card.label }}</span>
+              <span class="smart-task-card__title">
+                <AppIcon :name="card.icon" class="smart-task-card__icon" />
+                {{ card.label }}
+              </span>
               <a-tag :color="card.tagColor">{{ card.tag }}</a-tag>
             </div>
             <strong>{{ card.value }}</strong>
@@ -53,9 +57,18 @@
       <a-card class="content-card smart-panel" :bordered="false">
         <template #title>快速动作</template>
         <div class="quick-action-grid">
-          <a-button type="primary" @click="goWorkbench({ path: '/purchase', query: { action: 'create' } })">新增采购批次</a-button>
-          <a-button type="primary" @click="goWorkbench({ path: '/production', query: { action: 'create' } })">新增生产单</a-button>
-          <a-button @click="goWorkbench({ path: '/factory-dispatch', query: { stock_scope: 'warehouse' } })">查看仓库库存</a-button>
+          <a-button type="primary" @click="goWorkbench({ path: '/purchase', query: { action: 'create' } })">
+            <AppIcon name="purchase" class="quick-action-icon" />
+            新增采购批次
+          </a-button>
+          <a-button type="primary" @click="goWorkbench({ path: '/production', query: { action: 'create' } })">
+            <AppIcon name="production" class="quick-action-icon" />
+            新增生产单
+          </a-button>
+          <a-button @click="goWorkbench({ path: '/factory-dispatch', query: { stock_scope: 'warehouse' } })">
+            <AppIcon name="inventory" class="quick-action-icon" />
+            查看仓库库存
+          </a-button>
         </div>
         <div class="smart-tip-box">
           <div class="smart-tip-box__title">智能提示</div>
@@ -187,6 +200,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
+import AppIcon from '@/components/AppIcon.vue'
 import { api, checkRemoteHostHealth, formatMoney, normalizeRemoteHost } from '@/utils/api'
 
 const router = useRouter()
@@ -251,11 +265,11 @@ const tailscaleShareHost = computed(() =>
 )
 
 const summaryItems = computed(() => [
-  { key: 'materials', label: '物料档案', value: stats.materialsCount, note: '点击进入物料资料', route: { path: '/material' } },
-  { key: 'garments', label: '成衣款数', value: stats.garmentsCount, note: '点击进入成衣管理', route: { path: '/style' } },
-  { key: 'batches', label: '采购批次', value: stats.batchesCount, note: '点击查看采购单', route: { path: '/purchase' } },
-  { key: 'production', label: '生产制单', value: stats.productionCount, note: '点击查看生产单', route: { path: '/production' } },
-  { key: 'stockValue', label: '库存货值', value: formatMoney(stats.stockValue), note: '按库存均价计算', route: { path: '/inventory' } },
+  { key: 'materials', icon: 'material', label: '物料档案', value: stats.materialsCount, note: '点击进入物料资料', route: { path: '/material' } },
+  { key: 'garments', icon: 'style', label: '成衣款数', value: stats.garmentsCount, note: '点击进入成衣管理', route: { path: '/style' } },
+  { key: 'batches', icon: 'purchase', label: '采购批次', value: stats.batchesCount, note: '点击查看采购单', route: { path: '/purchase' } },
+  { key: 'production', icon: 'production', label: '生产制单', value: stats.productionCount, note: '点击查看生产单', route: { path: '/production' } },
+  { key: 'stockValue', icon: 'value', label: '库存货值', value: formatMoney(stats.stockValue), note: '按库存均价计算', route: { path: '/inventory' } },
 ])
 
 const pendingPurchases = computed(() => purchaseSnapshot.value.filter((item) => String(item.document_status || 'draft') === 'submitted'))
@@ -267,6 +281,7 @@ const preallocWarnings = computed(() =>
 const smartCards = computed(() => [
   {
     key: 'purchase-review',
+    icon: 'purchase',
     label: '待审核采购',
     value: `${pendingPurchases.value.length} 张`,
     note: '需要补图片、审核或退回草稿的采购单',
@@ -277,6 +292,7 @@ const smartCards = computed(() => [
   },
   {
     key: 'production-review',
+    icon: 'production',
     label: '待审核生产',
     value: `${pendingProductions.value.length} 张`,
     note: '进入审核后才会正式扣减库存',
@@ -287,6 +303,7 @@ const smartCards = computed(() => [
   },
   {
     key: 'prealloc-warning',
+    icon: 'warning',
     label: '预领用异常',
     value: `${preallocWarnings.value.length} 项`,
     note: '未审核生产单占用后可用量不足',
@@ -660,6 +677,34 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
+.smart-stat-card__icon,
+.smart-task-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 13px;
+  background: linear-gradient(135deg, rgba(47, 125, 255, 0.16), rgba(90, 200, 250, 0.12));
+  color: #1677ff;
+}
+
+.smart-stat-card__icon {
+  margin-bottom: 10px;
+}
+
+.smart-stat-card__icon :deep(svg),
+.smart-task-card__icon :deep(svg),
+.quick-action-icon :deep(svg) {
+  width: 19px;
+  height: 19px;
+  display: block;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .workbench-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
@@ -714,6 +759,13 @@ onUnmounted(() => {
   font-weight: 700;
 }
 
+.smart-task-card__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 .smart-task-card strong {
   display: block;
   margin-top: 14px;
@@ -731,6 +783,19 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.quick-action-grid :deep(.ant-btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.quick-action-icon {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
 }
 
 .smart-tip-box {
