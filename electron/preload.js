@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearInventoryResidue: (payload) => invokeBridge('db:clearInventoryResidue', toPlainPayload(payload)),
     updatePurchaseBatchFactoryAllocations: (payload) => invokeBridge('db:updatePurchaseBatchFactoryAllocations', toPlainPayload(payload)),
     processPurchaseBatchAfterSale: (payload) => invokeBridge('db:processPurchaseBatchAfterSale', toPlainPayload(payload)),
+    processFactorySupplierExchange: (payload) => invokeBridge('db:processFactorySupplierExchange', toPlainPayload(payload)),
     getInventoryMovements: (payload) => invokeBridge('db:getInventoryMovements', toPlainPayload(payload)),
     getAuditLogs: (payload) => invokeBridge('db:getAuditLogs', toPlainPayload(payload)),
     getNextBatchNo: () => invokeBridge('db:getNextBatchNo'),

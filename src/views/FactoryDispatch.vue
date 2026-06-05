@@ -130,6 +130,7 @@
           <div class="erp-mobile-card__footer">
             <a-button type="primary" size="small" @click="openDispatch(row)">出库到工厂</a-button>
             <a-button v-if="Number(row.factory_allocated_qty || 0) > 0" size="small" @click="openRecover(row)">回收入仓</a-button>
+            <a-button v-if="Number(row.factory_remaining_qty || 0) > 0" size="small" @click="openFactoryExchange(row)">工厂退换</a-button>
             <a-button size="small" danger @click="openVerifyStock(row)">核实库存</a-button>
           </div>
         </div>
@@ -218,6 +219,7 @@
                 <div class="table-actions-inline">
                   <a-button type="primary" size="small" @click="openDispatch(row)">出库到工厂</a-button>
                   <a-button v-if="Number(row.factory_allocated_qty || 0) > 0" size="small" @click="openRecover(row)">回收入仓</a-button>
+                  <a-button v-if="Number(row.factory_remaining_qty || 0) > 0" size="small" @click="openFactoryExchange(row)">工厂退换</a-button>
                   <a-button size="small" danger @click="openVerifyStock(row)">核实库存</a-button>
                 </div>
               </td>
@@ -402,6 +404,127 @@
         </div>
 
         <a-button v-if="dispatchMode !== 'recover'" @click="addDispatchAllocation">新增去向</a-button>
+      </div>
+    </a-modal>
+
+    <a-modal
+      v-model:open="factoryExchangeVisible"
+      title="工厂退供应商换货"
+      width="760px"
+      ok-text="确认退换"
+      cancel-text="取消"
+      :confirm-loading="factoryExchangeSaving"
+      @ok="saveFactoryExchange"
+    >
+      <div v-if="factoryExchangeBatch" class="dispatch-panel">
+        <div class="table-stack table-stack--tight" style="margin-bottom: 12px;">
+          <div class="table-primary">{{ factoryExchangeBatch.batch_no || '-' }} / {{ factoryExchangeBatch.material_code || '-' }}</div>
+          <div class="table-secondary">
+            已发到工厂的原料出现质量问题时，在这里直接退供应商换货；系统会扣减对应工厂余量，并生成新的换货入库批次。
+          </div>
+        </div>
+        <a-row :gutter="12">
+          <a-col :span="8"><a-input :value="`原料：${factoryExchangeBatch.material_code || '-'} / ${factoryExchangeBatch.material_name || '-'}`" readonly /></a-col>
+          <a-col :span="8"><a-input :value="`颜色/尺码：${formatColorWithSize(factoryExchangeBatch)}`" readonly /></a-col>
+          <a-col :span="8"><a-input :value="`仓库剩余：${formatQtyWithUnit(factoryExchangeBatch.warehouse_remaining_qty, factoryExchangeBatch.unit)}`" readonly /></a-col>
+        </a-row>
+        <a-form layout="vertical" style="margin-top: 12px;">
+          <a-row :gutter="12">
+            <a-col :span="12">
+              <a-form-item label="退换工厂">
+                <a-select
+                  v-model:value="factoryExchangeForm.factory_name"
+                  show-search
+                  placeholder="选择工厂"
+                  :options="factoryExchangeFactoryOptions"
+                  :filter-option="filterSelectOption"
+                  :get-popup-container="getPopupContainer"
+                  @change="handleFactoryExchangeFactoryChange"
+                />
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
+              <a-form-item label="当前工厂可退数量">
+                <a-input :value="formatQtyWithUnit(factoryExchangeMaxQty, factoryExchangeBatch.unit)" readonly />
+              </a-form-item>
+            </a-col>
+          </a-row>
+          <a-row :gutter="12">
+            <a-col :span="12">
+              <a-form-item label="问题数量（换出）">
+                <a-input-number
+                  v-model:value="factoryExchangeForm.out_qty"
+                  style="width: 100%"
+                  :min="0"
+                  :max="factoryExchangeMaxQty"
+                  :step="0.0001"
+                />
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
+              <a-form-item label="换入数量">
+                <a-input-number
+                  v-model:value="factoryExchangeForm.in_qty"
+                  style="width: 100%"
+                  :min="0"
+                  :step="0.0001"
+                />
+              </a-form-item>
+            </a-col>
+          </a-row>
+          <a-row :gutter="12">
+            <a-col :span="8">
+              <a-form-item label="换入颜色">
+                <a-input v-model:value="factoryExchangeForm.in_color" placeholder="默认同原颜色" />
+              </a-form-item>
+            </a-col>
+            <a-col :span="8">
+              <a-form-item label="换入尺码">
+                <a-auto-complete
+                  v-model:value="factoryExchangeForm.in_size"
+                  placeholder="选择或输入尺码"
+                  :options="factoryExchangeSizeOptions"
+                  :filter-option="filterSelectOption"
+                  :get-popup-container="getPopupContainer"
+                />
+              </a-form-item>
+            </a-col>
+            <a-col :span="8">
+              <a-form-item label="换入去向">
+                <a-select
+                  v-model:value="factoryExchangeForm.in_destination"
+                  :options="factoryExchangeDestinationOptions"
+                  :get-popup-container="getPopupContainer"
+                />
+              </a-form-item>
+            </a-col>
+          </a-row>
+          <a-row :gutter="12">
+            <a-col :span="12">
+              <a-form-item label="入库仓库">
+                <a-select
+                  v-model:value="factoryExchangeForm.warehouse_name"
+                  show-search
+                  placeholder="选择仓库"
+                  :options="warehouseSelectOptions"
+                  :filter-option="filterSelectOption"
+                  :get-popup-container="getPopupContainer"
+                />
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
+              <a-form-item label="原因">
+                <a-input v-model:value="factoryExchangeForm.reason" placeholder="例如：脏污/破损/尺码换错" />
+              </a-form-item>
+            </a-col>
+          </a-row>
+          <a-form-item label="备注">
+            <a-input v-model:value="factoryExchangeForm.remark" placeholder="补充说明，会写入库存流水和审计记录" />
+          </a-form-item>
+        </a-form>
+        <div class="formula-box">
+          换出会扣减所选工厂的实际剩余；换入会生成新的供应商换货批次，可入主仓库，也可直接补回该工厂。
+        </div>
       </div>
     </a-modal>
 
@@ -630,6 +753,20 @@ const verifySaving = ref(false)
 const verifyBatch = ref(null)
 const verifyQty = ref(0)
 const verifyRemark = ref('')
+const factoryExchangeVisible = ref(false)
+const factoryExchangeSaving = ref(false)
+const factoryExchangeBatch = ref(null)
+const factoryExchangeForm = reactive({
+  factory_name: '',
+  out_qty: 0,
+  in_qty: 0,
+  in_color: '',
+  in_size: '',
+  in_destination: 'warehouse',
+  warehouse_name: '主仓库',
+  reason: '',
+  remark: ''
+})
 
 const filterFieldOptions = [
   { label: '综合搜索', value: 'keyword' },
@@ -647,6 +784,11 @@ const stockScopeOptions = [
   { label: '只看工厂库存', value: 'factory' }
 ]
 
+const factoryExchangeDestinationOptions = [
+  { label: '回主仓库', value: 'warehouse' },
+  { label: '直接回该工厂', value: 'factory' }
+]
+
 const supplierOptions = computed(() =>
   [...new Set(summary.batches.map((item) => String(item.supplier || '').trim()).filter(Boolean))]
     .map((item) => ({ label: item, value: item }))
@@ -656,6 +798,34 @@ const factorySelectOptions = computed(() => toSelectOptions(optionLists.value.fa
 const warehouseSelectOptions = computed(() => toSelectOptions(optionLists.value.warehouses || ['主仓库']))
 const currentFactoryDeleteTarget = computed(() => String(factoryDraftText.value || factoryDraftValue.value || '').trim())
 const currentWarehouseDeleteTarget = computed(() => String(warehouseDraftText.value || warehouseDraftValue.value || '').trim())
+const factoryExchangeFactoryOptions = computed(() => {
+  const rows = Array.isArray(factoryExchangeBatch.value?.allocations) ? factoryExchangeBatch.value.allocations : []
+  return rows
+    .filter((item) => Number(item.remaining_qty || 0) > 0.0001)
+    .map((item) => ({
+      label: `${item.factory_name}（可退 ${formatQtyWithUnit(item.remaining_qty, factoryExchangeBatch.value?.unit)}）`,
+      value: item.factory_name
+    }))
+})
+const factoryExchangeSelectedAllocation = computed(() => {
+  const targetFactory = String(factoryExchangeForm.factory_name || '').trim()
+  const rows = Array.isArray(factoryExchangeBatch.value?.allocations) ? factoryExchangeBatch.value.allocations : []
+  return rows.find((item) => String(item.factory_name || '').trim() === targetFactory) || null
+})
+const factoryExchangeMaxQty = computed(() => Number(factoryExchangeSelectedAllocation.value?.remaining_qty || 0))
+const factoryExchangeSizeOptions = computed(() => {
+  const record = factoryExchangeBatch.value || {}
+  const materialId = Number(record.material_id || 0)
+  const color = String(factoryExchangeForm.in_color || record.color || '').trim()
+  const values = summary.batches
+    .filter((item) => Number(item.material_id || 0) === materialId)
+    .filter((item) => !color || String(item.color || '').trim() === color)
+    .map((item) => String(item.size || '').trim())
+    .filter(Boolean)
+  const current = String(factoryExchangeForm.in_size || record.size || '').trim()
+  return [...new Set([current, ...values].filter(Boolean))]
+    .map((item) => ({ label: item, value: item }))
+})
 
 const filterPlaceholder = computed(() => {
   const labelMap = {
@@ -849,6 +1019,38 @@ function openVerifyStock(record) {
   verifyVisible.value = true
 }
 
+function resetFactoryExchangeForm(record = {}) {
+  const firstFactory = (Array.isArray(record.allocations) ? record.allocations : [])
+    .find((item) => Number(item.remaining_qty || 0) > 0.0001)
+  factoryExchangeForm.factory_name = String(firstFactory?.factory_name || '').trim()
+  factoryExchangeForm.out_qty = 0
+  factoryExchangeForm.in_qty = 0
+  factoryExchangeForm.in_color = String(record.color || '').trim()
+  factoryExchangeForm.in_size = String(record.size || '').trim()
+  factoryExchangeForm.in_destination = 'warehouse'
+  factoryExchangeForm.warehouse_name = String(record.warehouse_name || '主仓库').trim() || '主仓库'
+  factoryExchangeForm.reason = ''
+  factoryExchangeForm.remark = ''
+}
+
+function openFactoryExchange(record) {
+  const availableAllocations = (Array.isArray(record?.allocations) ? record.allocations : [])
+    .filter((item) => Number(item.remaining_qty || 0) > 0.0001)
+  if (!availableAllocations.length) {
+    message.error('该批次当前没有可退换的工厂剩余库存')
+    return
+  }
+  factoryExchangeBatch.value = { ...record, allocations: availableAllocations }
+  resetFactoryExchangeForm(factoryExchangeBatch.value)
+  factoryExchangeVisible.value = true
+}
+
+function handleFactoryExchangeFactoryChange() {
+  if (Number(factoryExchangeForm.out_qty || 0) > factoryExchangeMaxQty.value) {
+    factoryExchangeForm.out_qty = factoryExchangeMaxQty.value
+  }
+}
+
 async function saveFactoryOption() {
   const value = String(factoryDraftText.value || factoryDraftValue.value || '').trim()
   if (!value) {
@@ -1023,6 +1225,52 @@ async function saveInventoryVerification() {
     message.error(error?.message || '核实库存失败')
   } finally {
     verifySaving.value = false
+  }
+}
+
+async function saveFactoryExchange() {
+  if (!factoryExchangeBatch.value?.id) return
+  const maxQty = Number(factoryExchangeMaxQty.value || 0)
+  const outQty = Number(factoryExchangeForm.out_qty || 0)
+  const inQty = Number(factoryExchangeForm.in_qty || 0)
+  if (!factoryExchangeForm.factory_name) {
+    message.error('请先选择退换工厂')
+    return
+  }
+  if (outQty <= 0) {
+    message.error('请填写问题数量')
+    return
+  }
+  if (outQty - maxQty > 0.0001) {
+    message.error(`问题数量不能大于当前工厂可退数量，最多 ${formatQtyWithUnit(maxQty, factoryExchangeBatch.value.unit)}`)
+    return
+  }
+  if (inQty <= 0) {
+    message.error('请填写换入数量')
+    return
+  }
+  factoryExchangeSaving.value = true
+  try {
+    const result = await api.db.processFactorySupplierExchange({
+      batch_id: Number(factoryExchangeBatch.value.id),
+      factory_name: factoryExchangeForm.factory_name,
+      out_qty: outQty,
+      in_qty: inQty,
+      in_color: factoryExchangeForm.in_color || factoryExchangeBatch.value.color || '',
+      in_size: factoryExchangeForm.in_size || factoryExchangeBatch.value.size || '',
+      in_destination: factoryExchangeForm.in_destination,
+      warehouse_name: factoryExchangeForm.warehouse_name || '主仓库',
+      reason: factoryExchangeForm.reason || '',
+      remark: factoryExchangeForm.remark || ''
+    })
+    message.success(result?.message || '工厂退供应商换货已完成')
+    factoryExchangeVisible.value = false
+    factoryExchangeBatch.value = null
+    await loadData()
+  } catch (error) {
+    message.error(error?.message || '工厂退供应商换货失败')
+  } finally {
+    factoryExchangeSaving.value = false
   }
 }
 

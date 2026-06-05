@@ -1,14 +1,13 @@
 ﻿<template>
-  <div class="image-drop-input">
+  <div ref="rootRef" class="image-drop-input" @focusin="activatePasteTarget" @click="activatePasteTarget">
     <div
       class="image-drop-input__box"
       :class="{ 'image-drop-input__box--dragging': dragging }"
       tabindex="0"
-      @click="openFilePicker"
+      @click="handleBoxClick"
       @dragover.prevent="onDragOver"
       @dragleave.prevent="onDragLeave"
       @drop.prevent="onDrop"
-      @paste="onPaste"
     >
       <div v-if="images.length" class="multi-image-grid">
         <div
@@ -64,9 +63,11 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import { compressImageToDataUrl, transformImageDataUrl } from '@/utils/imageCompression'
+
+let activePasteTargetId = ''
 
 const props = defineProps({
   modelValue: {
@@ -81,14 +82,26 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue'])
 
+const componentId = `multi-image-${Date.now()}-${Math.random().toString(16).slice(2)}`
 const dragging = ref(false)
+const rootRef = ref(null)
 const fileInput = ref(null)
 const previewVisible = ref(false)
 const previewImage = ref('')
 const images = computed(() => getImages())
 
 function openFilePicker() {
+  activatePasteTarget()
   fileInput.value?.click()
+}
+
+function handleBoxClick() {
+  activatePasteTarget()
+  openFilePicker()
+}
+
+function activatePasteTarget() {
+  activePasteTargetId = componentId
 }
 
 function getImages() {
@@ -134,11 +147,13 @@ async function onDrop(event) {
 }
 
 async function onPaste(event) {
+  if (activePasteTargetId !== componentId) return
   const files = Array.from(event.clipboardData?.items || [])
     .filter((item) => String(item.type || '').startsWith('image/'))
     .map((item) => item.getAsFile())
     .filter(Boolean)
   if (!files.length) return
+  event.preventDefault()
   await readFiles(files)
 }
 
@@ -166,4 +181,13 @@ function openPreview(image) {
   previewImage.value = String(image || '')
   previewVisible.value = Boolean(previewImage.value)
 }
+
+onMounted(() => {
+  window.addEventListener('paste', onPaste)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('paste', onPaste)
+  if (activePasteTargetId === componentId) activePasteTargetId = ''
+})
 </script>

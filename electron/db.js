@@ -7973,6 +7973,218 @@ ipcMain.handle('db:processPurchaseBatchAfterSale', (_event, payload = {}) => {
   return { success: true, ...result, message }
 })
 
+ipcMain.handle('db:processFactorySupplierExchange', (_event, payload = {}) => {
+  assertWritable('工厂质量退换')
+  const batchId = Number(payload.batch_id || payload.id || 0)
+  const factoryName = cleanText(payload.factory_name)
+  const outQty = round(Math.max(Number(payload.out_qty || payload.qty || 0), 0), 6)
+  const inQty = round(Math.max(Number(payload.in_qty || 0), 0), 6)
+  const inDestination = cleanText(payload.in_destination || payload.destination) === 'factory' ? 'factory' : 'warehouse'
+  const warehouseName = cleanText(payload.warehouse_name || payload.in_warehouse_name) || '主仓库'
+  const inColor = cleanText(payload.in_color)
+  const inSize = cleanText(payload.in_size)
+  const reason = cleanText(payload.reason)
+  const remarkText = cleanText(payload.remark)
+  if (!batchId) throw new Error('请选择要退换的采购批次')
+  if (!factoryName) throw new Error('请选择发生质量问题的工厂')
+  if (outQty <= 0) throw new Error('请填写工厂退供应商的问题数量')
+  if (inQty <= 0) throw new Error('请填写供应商换回来的入库数量')
+
+  const select = db.prepare(`
+    SELECT pb.*, m.code AS material_code, m.name AS material_name
+    FROM purchase_batches pb
+    JOIN materials m ON m.id = pb.material_id
+    WHERE pb.id=?
+  `)
+  const updateBatch = db.prepare(`
+    UPDATE purchase_batches
+    SET remaining_qty=?,
+        factory_name=?,
+        factory_allocated_qty=?,
+        warehouse_name=?,
+        updated_at=CURRENT_TIMESTAMP
+    WHERE id=?
+  `)
+  const insertAfterSale = db.prepare(`
+    INSERT INTO purchase_batch_after_sales (
+      purchase_batch_id,
+      type,
+      qty,
+      unit,
+      warehouse_name,
+      in_batch_id,
+      in_batch_no,
+      in_qty,
+      in_unit,
+      in_warehouse_name,
+      in_color,
+      in_size,
+      reason,
+      remark
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `)
+  const consumedStmt = db.prepare(`
+    SELECT ROUND(COALESCE(SUM(pom.consumed_qty), 0), 6) AS consumed_qty
+    FROM production_order_materials pom
+    JOIN production_orders po ON po.id = pom.order_id
+    WHERE pom.batch_id=?
+      AND TRIM(COALESCE(po.factory_name, '')) = ?
+      AND LOWER(TRIM(COALESCE(po.document_status, 'draft'))) = 'approved'
+  `)
+
+  const tx = db.transaction(() => {
+    const before = select.get(batchId)
+    if (!before) throw new Error('未找到对应采购批次')
+    if (normalizeDocumentStatus(before.document_status) !== 'approved') {
+      throw new Error(`采购批次【${cleanText(before.batch_no)}】未审核，不能执行工厂退换`)
+    }
+
+    const material = getMaterialById(before.material_id)
+    const stockUnit = normalizeUnit(before.unit || material?.unit)
+    const allocations = getPurchaseBatchAllocations(batchId)
+    const targetAllocation = allocations.find((item) => cleanText(item.factory_name) === factoryName)
+    if (!targetAllocation) {
+      throw new Error(`采购批次【${cleanText(before.batch_no)}】没有分配到工厂【${factoryName}】的库存`)
+    }
+
+    const effectiveAllocatedQty = round(Number(resolveFactoryAllocationQtyFromRollCount(before, targetAllocation, material) || 0), 6)
+    const consumedQty = round(Number(consumedStmt.get(batchId, factoryName)?.consumed_qty || 0), 6)
+    const factoryReturnableQty = round(
+      Math.max(Math.min(effectiveAllocatedQty, Number(before.remaining_qty || 0) + consumedQty) - consumedQty, 0),
+      6
+    )
+    if (outQty > factoryReturnableQty + 0.000001) {
+      throw new Error(`工厂【${factoryName}】当前最多可退换 ${formatServerQtyWithUnit(factoryReturnableQty, stockUnit)}，不能退换 ${formatServerQtyWithUnit(outQty, stockUnit)}`)
+    }
+    if (outQty > Number(before.remaining_qty || 0) + 0.000001) {
+      throw new Error(`采购批次【${cleanText(before.batch_no)}】当前总剩余不足，最多可退换 ${formatServerQtyWithUnit(before.remaining_qty, stockUnit)}`)
+    }
+
+    const nextAllocations = allocations.map((item) => {
+      if (cleanText(item.factory_name) !== factoryName) return item
+      const nextAllocatedQty = round(Math.max(Number(item.allocated_qty || 0) - outQty, 0), 6)
+      const ratio = Number(item.allocated_qty || 0) > 0 ? nextAllocatedQty / Number(item.allocated_qty || 0) : 0
+      return {
+        ...item,
+        allocated_qty: nextAllocatedQty,
+        allocated_roll_count: round(Number(item.allocated_roll_count || 0) * ratio, 4)
+      }
+    }).filter((item) => Number(item.allocated_qty || 0) > 0.000001 || Number(item.allocated_roll_count || 0) > 0.0001)
+
+    const savedAllocations = replacePurchaseBatchAllocations(batchId, nextAllocations)
+    const nextFactoryName = savedAllocations.map((item) => cleanText(item.factory_name)).filter(Boolean).join('、')
+    const nextFactoryAllocatedQty = round(savedAllocations.reduce((sum, item) => sum + Number(item.allocated_qty || 0), 0), 6)
+    const nextRemainingQty = round(Math.max(Number(before.remaining_qty || 0) - outQty, 0), 6)
+    updateBatch.run(nextRemainingQty, nextFactoryName, nextFactoryAllocatedQty, cleanText(before.warehouse_name) || warehouseName, batchId)
+
+    const afterSource = select.get(batchId)
+    const exchangeInBatch = createExchangeInBatch(before, {
+      in_qty: inQty,
+      in_unit: stockUnit,
+      in_warehouse_name: warehouseName,
+      in_color: inColor || before.color,
+      in_size: inSize || before.size,
+      remark: [`工厂 ${factoryName} 质量退换`, reason, remarkText].filter(Boolean).join('；')
+    })
+    if (!exchangeInBatch) throw new Error('供应商换货入库批次创建失败')
+
+    let exchangeInAfter = exchangeInBatch
+    if (inDestination === 'factory') {
+      const exchangeAllocations = replacePurchaseBatchAllocations(exchangeInBatch.id, [{
+        factory_name: factoryName,
+        allocated_qty: inQty,
+        allocated_roll_count: 0
+      }])
+      db.prepare(`
+        UPDATE purchase_batches
+        SET factory_name=?, factory_allocated_qty=?, warehouse_name=?
+        WHERE id=?
+      `).run(factoryName, inQty, warehouseName, exchangeInBatch.id)
+      exchangeInAfter = {
+        ...select.get(exchangeInBatch.id),
+        allocations: exchangeAllocations
+      }
+      logAudit('出仓入仓', '换货入库直发工厂', 'purchase_batch', exchangeInBatch.id, cleanText(exchangeInBatch.batch_no), exchangeInBatch, exchangeInAfter, `直接补回工厂【${factoryName}】`)
+    }
+
+    const afterSaleInfo = insertAfterSale.run(
+      batchId,
+      'exchange',
+      outQty,
+      stockUnit,
+      warehouseName,
+      Number(exchangeInBatch.id || 0),
+      cleanText(exchangeInBatch.batch_no),
+      inQty,
+      normalizeUnit(exchangeInBatch.unit || stockUnit),
+      warehouseName,
+      cleanText(exchangeInBatch.color || inColor || before.color),
+      cleanText(exchangeInBatch.size || inSize || before.size),
+      reason,
+      [`工厂 ${factoryName} 质量退换`, remarkText].filter(Boolean).join('；')
+    )
+    if (afterSaleInfo?.lastInsertRowid) {
+      db.prepare(`
+        UPDATE purchase_batches
+        SET remark=?
+        WHERE id=?
+      `).run(
+        buildExchangeInRemark(before, afterSaleInfo.lastInsertRowid, [`工厂 ${factoryName} 质量退换`, reason, remarkText].filter(Boolean).join('；')),
+        exchangeInBatch.id
+      )
+    }
+
+    logInventoryMovement({
+      movement_type: '工厂质量退换-换出',
+      direction: 'out',
+      material_id: before.material_id,
+      batch_id: before.id,
+      material_code: before.material_code,
+      material_name: before.material_name,
+      color: before.color,
+      qty: outQty,
+      unit: stockUnit,
+      balance_after: nextRemainingQty,
+      source_table: 'purchase_batches',
+      source_id: before.id,
+      source_no: cleanText(before.purchase_order_no || before.batch_no),
+      document_status: before.document_status,
+      remark: [`工厂 ${factoryName}`, reason, remarkText].filter(Boolean).join('；')
+    })
+    logAudit('出仓入仓', '工厂质量退换', 'purchase_batch', batchId, cleanText(before.batch_no), before, {
+      ...afterSource,
+      allocations: savedAllocations,
+      factory_exchange_out_qty: outQty,
+      exchange_in_batch_no: cleanText(exchangeInBatch.batch_no),
+      exchange_in_qty: inQty,
+      exchange_in_destination: inDestination === 'factory' ? factoryName : warehouseName
+    }, [`工厂 ${factoryName}`, reason, remarkText].filter(Boolean).join('；'))
+
+    return {
+      out_qty: outQty,
+      out_unit: stockUnit,
+      in_qty: inQty,
+      in_unit: normalizeUnit(exchangeInAfter.unit || stockUnit),
+      in_batch_no: cleanText(exchangeInAfter.batch_no),
+      in_destination: inDestination,
+      factory_name: factoryName,
+      warehouse_name: warehouseName
+    }
+  })
+
+  const result = tx()
+  bumpDataRevision()
+  runPostWriteMaintenance().catch(() => {})
+  const destinationText = result.in_destination === 'factory'
+    ? `直接补回工厂【${result.factory_name}】`
+    : `入库到【${result.warehouse_name}】`
+  return {
+    success: true,
+    ...result,
+    message: `工厂退换完成：换出 ${formatServerQtyWithUnit(result.out_qty, result.out_unit)}，换入 ${formatServerQtyWithUnit(result.in_qty, result.in_unit)}，${destinationText}`
+  }
+})
+
 ipcMain.handle('db:voidPurchaseBatches', (e, payload = {}) => {
   assertWritable('作废采购批次')
   const ids = [...new Set((payload.ids || []).map((item) => Number(item)).filter(Boolean))]

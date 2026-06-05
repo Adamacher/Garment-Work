@@ -37,6 +37,7 @@ const dbMethodNames = [
   'clearInventoryResidue',
   'updatePurchaseBatchFactoryAllocations',
   'processPurchaseBatchAfterSale',
+  'processFactorySupplierExchange',
   'getInventoryMovements',
   'getAuditLogs',
   'getNextBatchNo',
