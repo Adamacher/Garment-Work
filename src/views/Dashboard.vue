@@ -69,6 +69,18 @@
             <AppIcon name="inventory" class="quick-action-icon" />
             查看仓库库存
           </a-button>
+          <a-button @click="goWorkbench({ path: '/purchase', query: { document_status: 'approved', q: '换货' } })">
+            <AppIcon name="purchase" class="quick-action-icon" />
+            查看退换记录
+          </a-button>
+          <a-button @click="goWorkbench({ path: '/factory-dispatch', query: { stock_scope: 'factory' } })">
+            <AppIcon name="dispatch" class="quick-action-icon" />
+            工厂退换处理
+          </a-button>
+          <a-button @click="goWorkbench({ path: '/dashboard', query: { section: 'tailscale' } })">
+            <AppIcon name="link" class="quick-action-icon" />
+            连接远程数据库
+          </a-button>
         </div>
         <div class="smart-tip-box">
           <div class="smart-tip-box__title">智能提示</div>
@@ -277,6 +289,26 @@ const pendingProductions = computed(() => productionSnapshot.value.filter((item)
 const preallocWarnings = computed(() =>
   (inventorySnapshot.value.materials || []).filter((item) => Number(item.pre_allocated_qty || 0) > 0 && Number(item.available_after_prealloc_qty || 0) < -0.0001)
 )
+const factoryShortages = computed(() =>
+  (inventorySnapshot.value.materials || []).filter((item) =>
+    Number(item.factory_available_after_prealloc_qty ?? item.factory_remaining_qty ?? 0) < -0.0001
+  )
+)
+const supplierExchanges = computed(() =>
+  purchaseSnapshot.value.filter((item) =>
+    Number(item.after_sale_out_qty || 0) > 0
+      || Number(item.after_sale_in_ref_count || 0) > 0
+      || String(item.remark || '').includes('换货')
+  )
+)
+const costAbnormalProductions = computed(() =>
+  productionSnapshot.value.filter((item) => {
+    const materialCost = Number(item.material_cost || item.total_material_cost || 0)
+    const processingCost = Number(item.processing_cost || item.total_processing_cost || 0)
+    const unitCost = Number(item.unit_cost || item.actual_unit_cost || 0)
+    return unitCost < 0 || materialCost < 0 || processingCost < 0 || Number(item.loss_rate || 0) > 30
+  })
+)
 
 const smartCards = computed(() => [
   {
@@ -311,6 +343,39 @@ const smartCards = computed(() => [
     tagColor: preallocWarnings.value.length ? 'orange' : 'green',
     tone: preallocWarnings.value.length ? 'warning' : 'safe',
     route: { path: '/inventory', query: { stock_scope: 'prealloc_warning' } }
+  },
+  {
+    key: 'factory-shortage',
+    icon: 'dispatch',
+    label: '工厂缺料',
+    value: `${factoryShortages.value.length} 项`,
+    note: '工厂预领后不足，需要补调或核实库存',
+    tag: '工厂',
+    tagColor: factoryShortages.value.length ? 'red' : 'green',
+    tone: factoryShortages.value.length ? 'danger' : 'safe',
+    route: { path: '/inventory', query: { stock_scope: 'prealloc_warning' } }
+  },
+  {
+    key: 'supplier-exchange',
+    icon: 'purchase',
+    label: '供应商退换',
+    value: `${supplierExchanges.value.length} 单`,
+    note: '已登记退货、换货或补回入库记录',
+    tag: '退换',
+    tagColor: supplierExchanges.value.length ? 'purple' : 'default',
+    tone: supplierExchanges.value.length ? 'info' : 'safe',
+    route: { path: '/purchase', query: { document_status: 'approved', q: '换货' } }
+  },
+  {
+    key: 'cost-abnormal',
+    icon: 'value',
+    label: '成本异常',
+    value: `${costAbnormalProductions.value.length} 项`,
+    note: '损耗率或成本字段异常，需要复核制单',
+    tag: '成本',
+    tagColor: costAbnormalProductions.value.length ? 'orange' : 'green',
+    tone: costAbnormalProductions.value.length ? 'warning' : 'safe',
+    route: { path: '/production', query: { only_warnings: '1' } }
   }
 ])
 
@@ -318,6 +383,9 @@ const smartTips = computed(() => {
   const tips = []
   if (pendingPurchases.value.length) tips.push(`有 ${pendingPurchases.value.length} 张采购单待审核，建议先确认图片和金额。`)
   if (pendingProductions.value.length) tips.push(`有 ${pendingProductions.value.length} 张生产单待审核，审核前请查看库存校验摘要。`)
+  if (factoryShortages.value.length) tips.push(`有 ${factoryShortages.value.length} 项工厂缺料，请优先看库存详情或从仓库补调。`)
+  if (supplierExchanges.value.length) tips.push(`有 ${supplierExchanges.value.length} 单退换记录，建议核对换入批次是否已入库。`)
+  if (costAbnormalProductions.value.length) tips.push(`有 ${costAbnormalProductions.value.length} 项成本异常，建议复核实际总金额和加工费。`)
   if (!tips.length) tips.push('当前没有明显待办，库存与审核状态整体平稳。')
   return tips
 })

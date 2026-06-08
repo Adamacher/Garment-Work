@@ -4,6 +4,20 @@
       <PageSummaryStrip :items="summaryItems" />
       <template #title>采购单管理</template>
 
+      <div class="purchase-status-board">
+        <button
+          v-for="item in purchaseStatusBoard"
+          :key="item.key"
+          type="button"
+          :class="['purchase-status-card', { 'purchase-status-card--active': statusBoardFilter === item.key }]"
+          @click="applyPurchaseStatusBoard(item.key)"
+        >
+          <span class="purchase-status-card__label">{{ item.label }}</span>
+          <strong>{{ item.count }}</strong>
+          <small>{{ item.note }}</small>
+        </button>
+      </div>
+
       <MobileFilterPanel>
         <template #filters>
           <a-select
@@ -726,6 +740,7 @@ const route = useRoute()
 const supplierFilter = ref(undefined)
 const materialCategoryFilter = ref(undefined)
 const documentStatusFilter = ref(undefined)
+const statusBoardFilter = ref('all')
 const dateRange = ref([])
 const filterField = ref('keyword')
 const visible = ref(false)
@@ -971,6 +986,7 @@ const filteredRows = computed(() => {
     if (supplierFilter.value && normalizeFilterText(record.supplier) !== normalizeFilterText(supplierFilter.value)) return false
     if (!recordMatchesCategory(record, materialCategoryFilter.value)) return false
     if (documentStatusFilter.value && String(record.document_status || 'draft').trim().toLowerCase() !== String(documentStatusFilter.value).trim().toLowerCase()) return false
+    if (!recordMatchesStatusBoard(record)) return false
     if (!recordMatchesDate(record, normalizeFilterText(dateFrom), normalizeFilterText(dateTo))) return false
     return true
   })
@@ -1068,13 +1084,28 @@ function isProtectedPurchaseLine(row) {
   )
 }
 
+function isAfterSaleRecord(row) {
+  return Number(row?.after_sale_out_qty || 0) > 0
+    || Number(row?.after_sale_in_ref_count || 0) > 0
+    || String(row?.remark || '').includes('换货')
+    || String(row?.remark || '').includes('退货')
+}
+
+function recordMatchesStatusBoard(record) {
+  const key = statusBoardFilter.value || 'all'
+  if (key === 'all') return true
+  if (key === 'exchange') return isAfterSaleRecord(record)
+  return String(record?.document_status || 'draft') === key
+}
+
 const filteredList = computed(() => {
   const groups = new Map()
   const explicitlyViewingVoided = String(documentStatusFilter.value || '').trim() === 'voided'
+  const explicitlyViewingAfterSale = String(statusBoardFilter.value || '') === 'exchange'
   const visibleRows = filteredRows.value.filter((row) => (
     explicitlyViewingVoided
       ? String(row?.document_status || '').trim() === 'voided'
-      : !isInactivePurchaseRow(row)
+      : (explicitlyViewingAfterSale ? isAfterSaleRecord(row) : !isInactivePurchaseRow(row))
   ))
   for (const row of visibleRows) {
     const key = buildPurchaseGroupKey(row)
@@ -1145,12 +1176,38 @@ const summaryItems = computed(() => {
   ]
 })
 
+const purchaseStatusBoard = computed(() => {
+  const rows = Array.isArray(list.value) ? list.value : []
+  const activeRows = rows.filter((row) => String(row?.document_status || '') !== 'voided')
+  return [
+    { key: 'all', label: '全部采购', count: activeRows.length, note: '当前可管理单据' },
+    { key: 'submitted', label: '待审核', count: activeRows.filter((item) => item.document_status === 'submitted').length, note: '先看图片和金额' },
+    { key: 'approved', label: '已审核', count: activeRows.filter((item) => item.document_status === 'approved' && !isAfterSaleRecord(item)).length, note: '可出仓和退换' },
+    { key: 'exchange', label: '退换处理中', count: activeRows.filter(isAfterSaleRecord).length, note: '退货/换货/补回' },
+    { key: 'voided', label: '已作废', count: rows.filter((item) => item.document_status === 'voided').length, note: '仅用于追溯' }
+  ]
+})
+
+function applyPurchaseStatusBoard(key) {
+  statusBoardFilter.value = key || 'all'
+  if (key === 'all' || key === 'exchange') {
+    documentStatusFilter.value = undefined
+  } else if (['draft', 'submitted', 'approved', 'voided'].includes(key)) {
+    documentStatusFilter.value = key
+  }
+  purchaseCurrentPage.value = 1
+}
+
 const activePurchaseFilterChips = computed(() => {
   const chips = []
   if (keywordInput.value) chips.push(`关键词：${keywordInput.value}`)
   if (supplierFilter.value) chips.push(`供应商：${supplierFilter.value}`)
   if (materialCategoryFilter.value) chips.push(`分类：${materialCategoryFilter.value}`)
   if (documentStatusFilter.value) chips.push(`单据：${documentStatusLabel(documentStatusFilter.value)}`)
+  if (statusBoardFilter.value && statusBoardFilter.value !== 'all') {
+    const board = purchaseStatusBoard.value.find((item) => item.key === statusBoardFilter.value)
+    if (board) chips.push(`看板：${board.label}`)
+  }
   if (dateRange.value?.filter(Boolean).length) chips.push(`日期：${dateRange.value.filter(Boolean).join(' 至 ')}`)
   return chips
 })
@@ -1165,6 +1222,7 @@ function loadStoredViewState() {
     supplierFilter.value = parsed.supplierFilter || undefined
     materialCategoryFilter.value = parsed.materialCategoryFilter || undefined
     documentStatusFilter.value = parsed.documentStatusFilter || undefined
+    statusBoardFilter.value = parsed.statusBoardFilter || 'all'
     dateRange.value = Array.isArray(parsed.dateRange) ? parsed.dateRange.filter(Boolean).slice(0, 2) : []
     sortField.value = ['created_at', 'purchase_order_no', 'supplier', 'total_amount'].includes(parsed.sortField)
       ? parsed.sortField
@@ -1178,6 +1236,7 @@ function loadStoredViewState() {
 
 function applyRouteQueryFilters(query = route.query || {}) {
   if (query.document_status) documentStatusFilter.value = String(query.document_status)
+  if (query.board) statusBoardFilter.value = String(query.board)
   if (query.q) keywordInput.value = String(query.q)
   if (query.field && ['keyword', 'supplier', 'purchase_order_no', 'color', 'remark'].includes(String(query.field))) {
     filterField.value = String(query.field)
@@ -1192,6 +1251,7 @@ function clearPurchaseFilters() {
   supplierFilter.value = undefined
   materialCategoryFilter.value = undefined
   documentStatusFilter.value = undefined
+  statusBoardFilter.value = 'all'
   dateRange.value = []
   purchaseCurrentPage.value = 1
 }
@@ -1206,6 +1266,7 @@ function saveStoredViewState() {
         supplierFilter: supplierFilter.value,
         materialCategoryFilter: materialCategoryFilter.value,
         documentStatusFilter: documentStatusFilter.value,
+        statusBoardFilter: statusBoardFilter.value,
         dateRange: Array.isArray(dateRange.value) ? dateRange.value : [],
         sortField: sortField.value,
         sortOrder: sortOrder.value,
@@ -2528,7 +2589,7 @@ function formatQty(value) {
   return Number(value || 0).toFixed(4).replace(/\.?0+$/, '') || '0'
 }
 
-watch([filterField, keyword, supplierFilter, materialCategoryFilter, documentStatusFilter, dateRange], () => {
+watch([filterField, keyword, supplierFilter, materialCategoryFilter, documentStatusFilter, statusBoardFilter, dateRange], () => {
   purchaseCurrentPage.value = 1
   scheduleListReload(80)
 })
@@ -2542,7 +2603,7 @@ watch(
   { deep: true }
 )
 
-watch([filterField, keywordInput, supplierFilter, materialCategoryFilter, documentStatusFilter, dateRange, sortField, sortOrder, purchaseCurrentPage, purchasePageSize], () => {
+watch([filterField, keywordInput, supplierFilter, materialCategoryFilter, documentStatusFilter, statusBoardFilter, dateRange, sortField, sortOrder, purchaseCurrentPage, purchasePageSize], () => {
   saveStoredViewState()
 }, { deep: true })
 
@@ -2686,6 +2747,66 @@ onActivated(async () => {
   background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
   border: 1px solid #e5eefb;
   box-shadow: 0 18px 38px rgba(14, 43, 86, 0.06);
+}
+
+.purchase-status-board {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 18px;
+}
+
+.purchase-status-card {
+  min-height: 104px;
+  padding: 14px;
+  border: 1px solid rgba(180, 207, 242, 0.72);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 88% 0%, rgba(0, 122, 255, 0.08), transparent 36%),
+    linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  color: #173255;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 16px 34px rgba(14, 43, 86, 0.06);
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.purchase-status-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(0, 122, 255, 0.38);
+  box-shadow: 0 20px 42px rgba(0, 122, 255, 0.1);
+}
+
+.purchase-status-card--active {
+  border-color: rgba(0, 122, 255, 0.54);
+  background: linear-gradient(135deg, #ffffff 0%, #eaf5ff 100%);
+  box-shadow: inset 0 0 0 1px rgba(0, 122, 255, 0.08), 0 20px 42px rgba(0, 122, 255, 0.12);
+}
+
+.purchase-status-card__label,
+.purchase-status-card small {
+  display: block;
+}
+
+.purchase-status-card__label {
+  color: #5c7496;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.purchase-status-card strong {
+  display: block;
+  margin-top: 8px;
+  color: #0f2341;
+  font-size: 27px;
+  line-height: 1.1;
+}
+
+.purchase-status-card small {
+  margin-top: 8px;
+  color: #71819a;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .erp-page :deep(.erp-dense-table .ant-table-wrapper),
@@ -2910,6 +3031,10 @@ onActivated(async () => {
 }
 
 @media (max-width: 900px) {
+  .purchase-status-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .erp-page :deep(.ant-card-head) {
     min-height: 60px;
     padding: 0 18px;

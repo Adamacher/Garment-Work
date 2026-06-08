@@ -17,6 +17,20 @@
 
     <PageSummaryStrip :items="summary.summaryCards" />
 
+    <div class="inventory-manager-lens">
+      <button
+        v-for="item in inventoryManagerLenses"
+        :key="item.key"
+        type="button"
+        :class="['inventory-manager-lens__card', { 'inventory-manager-lens__card--active': filters.stockScope === item.scope }]"
+        @click="applyInventoryLens(item)"
+      >
+        <span>{{ item.label }}</span>
+        <strong :class="item.className">{{ item.value }}</strong>
+        <small>{{ item.note }}</small>
+      </button>
+    </div>
+
     <MobileFilterPanel>
       <template #filters>
         <a-select
@@ -1144,6 +1158,52 @@ const filteredInTransit = computed(() => {
 })
 const filteredBatches = computed(() => filterRows(summary.batches))
 
+const inventoryManagerLenses = computed(() => {
+  const rows = filteredMaterials.value
+  const sum = (field) => rows.reduce((total, item) => total + Number(item?.[field] || 0), 0)
+  const shortageCount = rows.filter((item) => Number(item.available_after_prealloc_qty || 0) < -0.0001).length
+  return [
+    {
+      key: 'warehouse',
+      scope: 'warehouse',
+      label: '仓库库存',
+      value: formatQty(sum('warehouse_remaining_qty')),
+      note: '仍在仓库，可出库到工厂',
+      className: ''
+    },
+    {
+      key: 'factory',
+      scope: 'factory',
+      label: '工厂库存',
+      value: formatQty(sum('factory_remaining_qty')),
+      note: '已发工厂，未被生产消耗',
+      className: ''
+    },
+    {
+      key: 'prealloc',
+      scope: 'prealloc_warning',
+      label: '预领用异常',
+      value: `${shortageCount} 项`,
+      note: '未审核生产占用后不足',
+      className: shortageCount ? 'erp-number--negative' : ''
+    },
+    {
+      key: 'all',
+      scope: 'all',
+      label: '当前总库存',
+      value: formatQty(sum('current_stock_qty')),
+      note: '仓库与工厂实际剩余合计',
+      className: ''
+    }
+  ]
+})
+
+function applyInventoryLens(item) {
+  filters.stockScope = item?.scope || 'all'
+  activeLedgerSection.value = 'summary'
+  materialCurrentPage.value = 1
+}
+
 const ledgerSectionOptions = computed(() => [
   { label: TEXT.summarySection, value: 'summary', count: filteredMaterials.value.length },
   { label: TEXT.transitSection, value: 'transit', count: filteredInTransit.value.length },
@@ -1421,6 +1481,66 @@ watch(filteredBatches, (rows) => {
   font-size: 12px;
 }
 
+.inventory-manager-lens {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.inventory-manager-lens__card {
+  min-height: 112px;
+  padding: 16px;
+  border: 1px solid rgba(180, 207, 242, 0.76);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 92% 0%, rgba(0, 122, 255, 0.1), transparent 36%),
+    linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  color: #173255;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 16px 34px rgba(14, 43, 86, 0.06);
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.inventory-manager-lens__card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(0, 122, 255, 0.4);
+  box-shadow: 0 20px 42px rgba(0, 122, 255, 0.1);
+}
+
+.inventory-manager-lens__card--active {
+  border-color: rgba(0, 122, 255, 0.55);
+  background: linear-gradient(135deg, #ffffff 0%, #eaf5ff 100%);
+  box-shadow: inset 0 0 0 1px rgba(0, 122, 255, 0.08), 0 20px 42px rgba(0, 122, 255, 0.12);
+}
+
+.inventory-manager-lens__card span,
+.inventory-manager-lens__card small {
+  display: block;
+}
+
+.inventory-manager-lens__card span {
+  color: #5c7496;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.inventory-manager-lens__card strong {
+  display: block;
+  margin-top: 10px;
+  color: #0f2341;
+  font-size: 26px;
+  line-height: 1.1;
+}
+
+.inventory-manager-lens__card small {
+  margin-top: 8px;
+  color: #71819a;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .inventory-view-switch {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1589,6 +1709,10 @@ watch(filteredBatches, (rows) => {
 }
 
 @media (max-width: 900px) {
+  .inventory-manager-lens {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .inventory-view-switch {
     grid-template-columns: 1fr;
   }
