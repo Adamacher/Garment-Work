@@ -708,10 +708,12 @@ function stringifyProductionSizeRows(rows = []) {
 function createBomRow(data = {}) {
   const material = data.material_id ? getMaterial(Number(data.material_id)) : null
   const materialId = data.material_id ? Number(data.material_id) : null
+  const usageUnit = normalizeUnit(data.usage_unit || '')
   return {
     localKey: `${Date.now()}-${Math.random()}`,
     material_id: materialId,
     _original_material_id: materialId,
+    _loaded_usage_unit: usageUnit,
     material_role: data.material_role || '辅料',
     supply_mode: data.supply_mode || 'our_supply',
     usage_mode: data.usage_mode || (data.material_role === 'A料' ? 'full_cut' : 'by_usage'),
@@ -721,7 +723,7 @@ function createBomRow(data = {}) {
     material_color: data.material_color || '',
     cost_price_type: data.cost_price_type || 'bulk',
     usage: data.usage === null || data.usage === undefined || data.usage === '' ? null : Number(data.usage || 0),
-    usage_unit: normalizeUnit(data.usage_unit || material?.unit || ''),
+    usage_unit: usageUnit || normalizeUnit(material?.unit || ''),
     loss_rate: Number(data.loss_rate || 0),
     sort_order: Number(data.sort_order || 0)
   }
@@ -733,15 +735,19 @@ function handleBomMaterialChange(row) {
   if (!material) return
   const currentMaterialId = Number(row.material_id || 0) || null
   const originalMaterialId = Number(row._original_material_id || 0) || null
+  const materialChanged = currentMaterialId !== originalMaterialId
   const hasExplicitUsageUnit = Boolean(String(row.usage_unit || '').trim())
-  if (!hasExplicitUsageUnit) {
+  if (materialChanged) {
+    row.usage_unit = normalizeUnit(row._loaded_usage_unit || row.usage_unit || material.unit || '米')
+  } else if (!hasExplicitUsageUnit) {
     row.usage_unit = normalizeUnit(material.unit || '米')
   }
   if (!row.material_color) {
     row.material_color = getColorOptions(row.material_id)[0]?.value || ''
   }
-  if (currentMaterialId !== originalMaterialId) {
+  if (materialChanged) {
     row._original_material_id = currentMaterialId
+    row._loaded_usage_unit = normalizeUnit(row.usage_unit || '')
   }
 }
 

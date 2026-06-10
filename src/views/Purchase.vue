@@ -370,7 +370,7 @@
           <a-button v-if="!viewMode" size="small" danger :disabled="isProtectedPurchaseLine(line)" @click="removeLine(index)">删除</a-button>
         </div>
         <a-row :gutter="10" class="plan-editor-row">
-          <a-col :flex="'280px'"><a-form-item label="原料" required><a-select v-model:value="line.material_id" :options="materialOptions" show-search option-filter-prop="label" :get-popup-container="getPopupContainer" @change="() => handleMaterialOrColorChange(line)" /></a-form-item></a-col>
+          <a-col :flex="'280px'"><a-form-item label="原料" required><a-select v-model:value="line.material_id" :options="materialOptions" show-search option-filter-prop="label" :get-popup-container="getPopupContainer" @change="() => handleMaterialChange(line)" /></a-form-item></a-col>
           <a-col :flex="'0 0 150px'"><a-form-item label="颜色"><a-select v-model:value="line.color" style="width: 100%" show-search option-filter-prop="label" allow-clear :options="getColorOptions(line.material_id)" :get-popup-container="getPopupContainer" placeholder="选择颜色" @change="() => handleMaterialOrColorChange(line)" /></a-form-item></a-col>
           <a-col :flex="'190px'"><a-form-item label="备注"><a-input v-model:value="line.color_remark" placeholder="该原料备注" /></a-form-item></a-col>
           <a-col v-if="isCupMaterial(line)" :flex="'0 0 128px'"><a-form-item label="尺码"><a-select v-model:value="line.size" style="width: 100%" show-search option-filter-prop="label" allow-clear :options="getSizeOptions(line.material_id, line.size)" :get-popup-container="getPopupContainer" placeholder="选择尺码" @change="() => handleSizeChange(line)" /></a-form-item></a-col>
@@ -1411,7 +1411,8 @@ function createLine(data = {}) {
     remark: data.remark || '',
     document_status: data.document_status || 'draft',
     after_sale_out_qty: Number(data.after_sale_out_qty || 0),
-    after_sale_in_ref_count: Number(data.after_sale_in_ref_count || 0)
+    after_sale_in_ref_count: Number(data.after_sale_in_ref_count || 0),
+    _last_material_id: data.material_id || null
   }
   return normalized
 }
@@ -1773,12 +1774,18 @@ function applyMaterialDefaults(line, options = {}) {
   const {
     forcePrice = false,
     resetManual = false,
-    syncPriceUnitToPurchaseUnit = false
+    syncPriceUnitToPurchaseUnit = false,
+    forceDefaultUnit = false
   } = options
   const material = resolveLineMaterial(line)
   if (!material) return
   const unitOptions = getPurchaseUnitOptions(material.id).map((item) => item.value)
-  if (!unitOptions.includes(line.purchase_input_unit)) line.purchase_input_unit = unitOptions[0]
+  const materialDefaultUnit = normalizeUnit(material.unit || unitOptions[0] || '米')
+  if (forceDefaultUnit && unitOptions.includes(materialDefaultUnit)) {
+    line.purchase_input_unit = materialDefaultUnit
+  } else if (!unitOptions.includes(line.purchase_input_unit)) {
+    line.purchase_input_unit = unitOptions.includes(materialDefaultUnit) ? materialDefaultUnit : unitOptions[0]
+  }
   if (isCupMaterialByMaterial(material)) {
     const sizeOptions = getSizeOptions(material.id, line.size).map((item) => item.value)
     if (!sizeOptions.includes(line.size)) line.size = sizeOptions[0] || ''
@@ -1799,6 +1806,18 @@ function applyMaterialDefaults(line, options = {}) {
 
 function handleMaterialOrColorChange(line) {
   applyMaterialDefaults(line, { forcePrice: true, resetManual: true })
+}
+
+function handleMaterialChange(line) {
+  const previousMaterialId = line._last_material_id
+  const materialChanged = String(previousMaterialId || '') !== String(line.material_id || '')
+  applyMaterialDefaults(line, {
+    forcePrice: true,
+    resetManual: true,
+    syncPriceUnitToPurchaseUnit: materialChanged,
+    forceDefaultUnit: materialChanged
+  })
+  line._last_material_id = line.material_id || null
 }
 
 function handlePurchaseUnitChange(line) {

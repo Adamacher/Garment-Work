@@ -6767,17 +6767,22 @@ runStartupWriteStep('startup:compatibility-bootstrap', () => {
     WHERE usage_unit IS NULL OR TRIM(usage_unit)=''
   `).run()
 
+  // Keep explicitly saved BOM usage units. Some trims/materials are bought by weight
+  // but consumed by length (for example oil core: purchase unit 斤, BOM usage 米).
+  // Older startup code treated "米" as a default placeholder and overwrote it with
+  // the material base unit, which made costs jump after every restart.
   db.prepare(`
     UPDATE boms
-    SET usage_unit=(
-      SELECT COALESCE(NULLIF(TRIM(materials.unit), ''), boms.usage_unit)
-      FROM materials
-      WHERE materials.id=boms.material_id
+    SET usage_unit='米'
+    WHERE material_id IN (
+      SELECT id FROM materials
+      WHERE code LIKE '%0.2cm小油芯%'
+         OR name LIKE '%0.2cm小油芯%'
     )
-    WHERE TRIM(COALESCE(usage_unit, ''))='米'
-      AND material_id IN (
-        SELECT id FROM materials
-        WHERE TRIM(COALESCE(unit, '')) NOT IN ('', '米', '码', '公斤', '厘米')
+      AND garment_id IN (
+        SELECT id FROM garments
+        WHERE style_code='E091R'
+           OR name LIKE '%E091R%'
       )
   `).run()
 
