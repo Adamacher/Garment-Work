@@ -6165,6 +6165,59 @@ CREATE TABLE IF NOT EXISTS purchase_batch_after_sales (
   FOREIGN KEY(purchase_batch_id) REFERENCES purchase_batches(id)
 );
 
+CREATE TABLE IF NOT EXISTS after_sale_orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_no TEXT UNIQUE NOT NULL,
+  source_type TEXT DEFAULT 'warehouse',
+  process_type TEXT DEFAULT 'exchange',
+  status TEXT DEFAULT 'pending',
+  supplier TEXT DEFAULT '',
+  reason TEXT DEFAULT '',
+  remark TEXT DEFAULT '',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS after_sale_out_lines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL,
+  purchase_batch_id INTEGER NOT NULL,
+  source_type TEXT DEFAULT 'warehouse',
+  factory_name TEXT DEFAULT '',
+  warehouse_name TEXT DEFAULT '主仓库',
+  material_id INTEGER DEFAULT NULL,
+  material_code TEXT DEFAULT '',
+  material_name TEXT DEFAULT '',
+  color TEXT DEFAULT '',
+  size TEXT DEFAULT '',
+  qty REAL NOT NULL DEFAULT 0,
+  unit TEXT DEFAULT '',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(order_id) REFERENCES after_sale_orders(id),
+  FOREIGN KEY(purchase_batch_id) REFERENCES purchase_batches(id)
+);
+
+CREATE TABLE IF NOT EXISTS after_sale_in_lines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL,
+  in_batch_id INTEGER DEFAULT NULL,
+  source_purchase_batch_id INTEGER DEFAULT NULL,
+  destination TEXT DEFAULT 'warehouse',
+  factory_name TEXT DEFAULT '',
+  warehouse_name TEXT DEFAULT '主仓库',
+  material_id INTEGER DEFAULT NULL,
+  material_code TEXT DEFAULT '',
+  material_name TEXT DEFAULT '',
+  color TEXT DEFAULT '',
+  size TEXT DEFAULT '',
+  qty REAL NOT NULL DEFAULT 0,
+  unit TEXT DEFAULT '',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(order_id) REFERENCES after_sale_orders(id),
+  FOREIGN KEY(in_batch_id) REFERENCES purchase_batches(id),
+  FOREIGN KEY(source_purchase_batch_id) REFERENCES purchase_batches(id)
+);
+
 CREATE TABLE IF NOT EXISTS production_orders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   order_no TEXT UNIQUE NOT NULL,
@@ -6529,6 +6582,36 @@ db.prepare(`
 db.prepare(`
   CREATE INDEX IF NOT EXISTS idx_purchase_batch_after_sales_batch
   ON purchase_batch_after_sales(purchase_batch_id)
+`).run()
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_after_sale_orders_order_no
+  ON after_sale_orders(order_no)
+`).run()
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_after_sale_orders_status
+  ON after_sale_orders(status)
+`).run()
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_after_sale_out_lines_batch
+  ON after_sale_out_lines(purchase_batch_id)
+`).run()
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_after_sale_out_lines_order
+  ON after_sale_out_lines(order_id)
+`).run()
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_after_sale_in_lines_order
+  ON after_sale_in_lines(order_id)
+`).run()
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_after_sale_in_lines_batch
+  ON after_sale_in_lines(in_batch_id)
 `).run()
 
 db.prepare(`
@@ -6911,6 +6994,7 @@ function normalizeInsertId(value) {
 const orderNoPrefix = () => `SC${localDateCode()}`
 const batchNoPrefix = () => `PC${localDateCode()}`
 const purchaseOrderNoPrefix = () => `PO${localDateCode()}`
+const afterSaleOrderNoPrefix = () => `AS${localDateCode()}`
 
 runStartupWriteStep('repair:legacy-exchange-in-batches', () => {
   const repairedCount = repairLegacyExchangeInBatches()
@@ -7458,7 +7542,9 @@ function buildExchangeInRemark(sourceBatch, sourceAfterSaleId, extraRemark = '')
 function createExchangeInBatch(sourceBatch, payload = {}) {
   const inQty = round(Number(payload.in_qty || 0), 6)
   if (!sourceBatch || inQty <= 0) return null
-  const stockUnit = normalizeUnit(payload.in_unit || sourceBatch.unit || '米')
+  const targetMaterialId = Number(payload.material_id || sourceBatch.material_id || 0)
+  const targetMaterial = getMaterialById(targetMaterialId) || {}
+  const stockUnit = normalizeUnit(payload.in_unit || sourceBatch.unit || targetMaterial.unit || '米')
   const warehouseName = cleanText(payload.in_warehouse_name || payload.warehouse_name || sourceBatch.warehouse_name) || '主仓库'
   const targetColor = cleanText(payload.in_color || sourceBatch.color)
   const targetSize = cleanText(payload.in_size || sourceBatch.size)
@@ -7473,7 +7559,7 @@ function createExchangeInBatch(sourceBatch, payload = {}) {
     batch_no: batchNo,
     document_status: 'approved',
     review_images_json: '[]',
-    material_id: Number(sourceBatch.material_id || 0),
+    material_id: targetMaterialId,
     purchase_order_no: cleanText(sourceBatch.purchase_order_no || sourceBatch.batch_no),
     merge_group_id: '',
     merge_snapshot_json: '',
@@ -7623,6 +7709,342 @@ function createExchangeInBatch(sourceBatch, payload = {}) {
   return saved
 }
 
+function normalizeAfterSaleSourceType(value) {
+  return cleanText(value) === 'factory' ? 'factory' : 'warehouse'
+}
+
+function normalizeAfterSaleProcessType(value) {
+  return cleanText(value) === 'return' ? 'return' : 'exchange'
+}
+
+function normalizeAfterSaleDestination(value) {
+  return cleanText(value) === 'factory' ? 'factory' : 'warehouse'
+}
+
+function buildAfterSaleStatus(processType, inLineCount = 0) {
+  if (processType === 'return') return 'returned'
+  return inLineCount > 0 ? 'completed' : 'pending'
+}
+
+function getAfterSaleOrder(orderId) {
+  const order = db.prepare(`
+    SELECT *
+    FROM after_sale_orders
+    WHERE id=?
+  `).get(orderId)
+  if (!order) return null
+  const outLines = db.prepare(`
+    SELECT *
+    FROM after_sale_out_lines
+    WHERE order_id=?
+    ORDER BY id ASC
+  `).all(orderId)
+  const inLines = db.prepare(`
+    SELECT *
+    FROM after_sale_in_lines
+    WHERE order_id=?
+    ORDER BY id ASC
+  `).all(orderId)
+  return {
+    ...order,
+    out_lines: outLines,
+    in_lines: inLines
+  }
+}
+
+function getFactoryConsumedQtyForBatch(batchId, factoryName) {
+  return round(Number(db.prepare(`
+    SELECT ROUND(COALESCE(SUM(pom.consumed_qty), 0), 6) AS consumed_qty
+    FROM production_order_materials pom
+    JOIN production_orders po ON po.id = pom.order_id
+    WHERE pom.batch_id=?
+      AND TRIM(COALESCE(po.factory_name, '')) = ?
+      AND LOWER(TRIM(COALESCE(po.document_status, 'draft'))) = 'approved'
+  `).get(batchId, cleanText(factoryName))?.consumed_qty || 0), 6)
+}
+
+function applyAfterSaleOutLine(orderId, orderNo, entry = {}) {
+  const batchId = Number(entry.batch_id || entry.purchase_batch_id || entry.id || 0)
+  const sourceType = normalizeAfterSaleSourceType(entry.source_type)
+  const factoryName = cleanText(entry.factory_name)
+  const outQty = round(Math.max(Number(entry.qty || entry.out_qty || 0), 0), 6)
+  const warehouseName = cleanText(entry.warehouse_name) || '主仓库'
+  if (!batchId) throw new Error('请选择要退换的采购批次')
+  if (outQty <= 0) throw new Error('请填写退换数量')
+  if (sourceType === 'factory' && !factoryName) throw new Error('工厂退换必须选择来源工厂')
+
+  const select = db.prepare(`
+    SELECT pb.*, m.code AS material_code, m.name AS material_name
+    FROM purchase_batches pb
+    JOIN materials m ON m.id = pb.material_id
+    WHERE pb.id=?
+  `)
+  const before = select.get(batchId)
+  if (!before) throw new Error('未找到对应采购批次')
+  if (normalizeDocumentStatus(before.document_status) !== 'approved') {
+    throw new Error(`采购批次【${cleanText(before.batch_no)}】未审核，不能执行退换货`)
+  }
+
+  const material = getMaterialById(before.material_id)
+  const stockUnit = normalizeUnit(before.unit || material?.unit)
+  const allocations = getPurchaseBatchAllocations(batchId)
+  let nextRemainingQty = round(Number(before.remaining_qty || 0), 6)
+  let savedAllocations = allocations
+
+  if (sourceType === 'warehouse') {
+    const allocatedQty = round(allocations.reduce((sum, allocation) => {
+      return sum + Number(resolveFactoryAllocationQtyFromRollCount(before, allocation, material) || 0)
+    }, 0), 6)
+    const warehouseAvailableQty = round(Math.max(Number(before.remaining_qty || 0) - allocatedQty, 0), 6)
+    if (outQty > warehouseAvailableQty + 0.000001) {
+      throw new Error(`采购批次【${cleanText(before.batch_no)}】当前仓库可退换数量仅剩 ${formatServerQtyWithUnit(warehouseAvailableQty, stockUnit)}，不能退换 ${formatServerQtyWithUnit(outQty, stockUnit)}`)
+    }
+    nextRemainingQty = round(Math.max(Number(before.remaining_qty || 0) - outQty, 0), 6)
+    db.prepare(`
+      UPDATE purchase_batches
+      SET remaining_qty=?,
+          warehouse_name=?,
+          updated_at=CURRENT_TIMESTAMP
+      WHERE id=?
+    `).run(nextRemainingQty, warehouseName || cleanText(before.warehouse_name) || '主仓库', batchId)
+  } else {
+    const targetAllocation = allocations.find((item) => cleanText(item.factory_name) === factoryName)
+    if (!targetAllocation) {
+      throw new Error(`采购批次【${cleanText(before.batch_no)}】没有分配到工厂【${factoryName}】的库存`)
+    }
+    const effectiveAllocatedQty = round(Number(resolveFactoryAllocationQtyFromRollCount(before, targetAllocation, material) || 0), 6)
+    const consumedQty = getFactoryConsumedQtyForBatch(batchId, factoryName)
+    const factoryReturnableQty = round(
+      Math.max(Math.min(effectiveAllocatedQty, Number(before.remaining_qty || 0) + consumedQty) - consumedQty, 0),
+      6
+    )
+    if (outQty > factoryReturnableQty + 0.000001) {
+      throw new Error(`工厂【${factoryName}】当前最多可退换 ${formatServerQtyWithUnit(factoryReturnableQty, stockUnit)}，不能退换 ${formatServerQtyWithUnit(outQty, stockUnit)}`)
+    }
+    if (outQty > Number(before.remaining_qty || 0) + 0.000001) {
+      throw new Error(`采购批次【${cleanText(before.batch_no)}】当前总剩余不足，最多可退换 ${formatServerQtyWithUnit(before.remaining_qty, stockUnit)}`)
+    }
+    const nextAllocations = allocations.map((item) => {
+      if (cleanText(item.factory_name) !== factoryName) return item
+      const nextAllocatedQty = round(Math.max(Number(item.allocated_qty || 0) - outQty, 0), 6)
+      const ratio = Number(item.allocated_qty || 0) > 0 ? nextAllocatedQty / Number(item.allocated_qty || 0) : 0
+      return {
+        ...item,
+        allocated_qty: nextAllocatedQty,
+        allocated_roll_count: round(Number(item.allocated_roll_count || 0) * ratio, 4)
+      }
+    }).filter((item) => Number(item.allocated_qty || 0) > 0.000001 || Number(item.allocated_roll_count || 0) > 0.0001)
+    savedAllocations = replacePurchaseBatchAllocations(batchId, nextAllocations)
+    const nextFactoryName = savedAllocations.map((item) => cleanText(item.factory_name)).filter(Boolean).join('、')
+    const nextFactoryAllocatedQty = round(savedAllocations.reduce((sum, item) => sum + Number(item.allocated_qty || 0), 0), 6)
+    nextRemainingQty = round(Math.max(Number(before.remaining_qty || 0) - outQty, 0), 6)
+    db.prepare(`
+      UPDATE purchase_batches
+      SET remaining_qty=?,
+          factory_name=?,
+          factory_allocated_qty=?,
+          warehouse_name=?,
+          updated_at=CURRENT_TIMESTAMP
+      WHERE id=?
+    `).run(nextRemainingQty, nextFactoryName, nextFactoryAllocatedQty, cleanText(before.warehouse_name) || warehouseName, batchId)
+  }
+
+  const outLine = {
+    order_id: Number(orderId),
+    purchase_batch_id: batchId,
+    source_type: sourceType,
+    factory_name: factoryName,
+    warehouse_name: warehouseName || cleanText(before.warehouse_name) || '主仓库',
+    material_id: Number(before.material_id || 0),
+    material_code: cleanText(before.material_code),
+    material_name: cleanText(before.material_name),
+    color: cleanText(before.color),
+    size: cleanText(before.size),
+    qty: outQty,
+    unit: stockUnit
+  }
+  db.prepare(`
+    INSERT INTO after_sale_out_lines (
+      order_id,
+      purchase_batch_id,
+      source_type,
+      factory_name,
+      warehouse_name,
+      material_id,
+      material_code,
+      material_name,
+      color,
+      size,
+      qty,
+      unit
+    ) VALUES (
+      @order_id,
+      @purchase_batch_id,
+      @source_type,
+      @factory_name,
+      @warehouse_name,
+      @material_id,
+      @material_code,
+      @material_name,
+      @color,
+      @size,
+      @qty,
+      @unit
+    )
+  `).run(outLine)
+
+  logInventoryMovement({
+    movement_type: sourceType === 'factory' ? '工厂退换货-换出' : '采购退换货-换出',
+    direction: 'out',
+    material_id: before.material_id,
+    batch_id: before.id,
+    material_code: before.material_code,
+    material_name: before.material_name,
+    color: before.color,
+    qty: outQty,
+    unit: stockUnit,
+    balance_after: nextRemainingQty,
+    source_table: 'after_sale_orders',
+    source_id: orderId,
+    source_no: orderNo,
+    document_status: before.document_status,
+    remark: [sourceType === 'factory' ? `工厂 ${factoryName}` : `仓库 ${warehouseName}`, `来源批次 ${cleanText(before.batch_no)}`].filter(Boolean).join('；')
+  })
+
+  return {
+    before,
+    after: select.get(batchId),
+    out_line: outLine,
+    allocations: savedAllocations
+  }
+}
+
+function createAfterSaleInboundLine(orderId, orderNo, entry = {}, fallbackSourceBatch = null) {
+  const inQty = round(Math.max(Number(entry.qty || entry.in_qty || 0), 0), 6)
+  if (inQty <= 0) return null
+  const sourceBatchId = Number(entry.source_batch_id || entry.purchase_batch_id || fallbackSourceBatch?.id || 0)
+  const sourceBatch = sourceBatchId
+    ? db.prepare(`
+      SELECT pb.*, m.code AS material_code, m.name AS material_name
+      FROM purchase_batches pb
+      JOIN materials m ON m.id = pb.material_id
+      WHERE pb.id=?
+    `).get(sourceBatchId)
+    : fallbackSourceBatch
+  if (!sourceBatch) throw new Error('换入明细缺少来源批次，无法生成换货入库批次')
+
+  const destination = normalizeAfterSaleDestination(entry.destination || entry.in_destination)
+  const factoryName = cleanText(entry.factory_name)
+  const warehouseName = cleanText(entry.warehouse_name || entry.in_warehouse_name) || cleanText(sourceBatch.warehouse_name) || '主仓库'
+  if (destination === 'factory' && !factoryName) throw new Error('换入去向为工厂时必须选择目标工厂')
+
+  const materialId = Number(entry.material_id || sourceBatch.material_id || 0)
+  const targetMaterial = getMaterialById(materialId) || {}
+  const inUnit = normalizeUnit(entry.unit || entry.in_unit || sourceBatch.unit || targetMaterial.unit)
+  const exchangeInBatch = createExchangeInBatch(sourceBatch, {
+    material_id: materialId,
+    in_qty: inQty,
+    in_unit: inUnit,
+    in_warehouse_name: warehouseName,
+    in_color: cleanText(entry.color || entry.in_color || sourceBatch.color),
+    in_size: cleanText(entry.size || entry.in_size || sourceBatch.size),
+    source_after_sale_id: orderId,
+    remark: [`退换货单 ${orderNo}`, cleanText(entry.remark)].filter(Boolean).join('；')
+  })
+  if (!exchangeInBatch) throw new Error('供应商换货入库批次创建失败')
+
+  let savedBatch = exchangeInBatch
+  if (destination === 'factory') {
+    const exchangeAllocations = replacePurchaseBatchAllocations(exchangeInBatch.id, [{
+      factory_name: factoryName,
+      allocated_qty: inQty,
+      allocated_roll_count: 0
+    }])
+    db.prepare(`
+      UPDATE purchase_batches
+      SET factory_name=?,
+          factory_allocated_qty=?,
+          warehouse_name=?,
+          updated_at=CURRENT_TIMESTAMP
+      WHERE id=?
+    `).run(factoryName, inQty, warehouseName, exchangeInBatch.id)
+    savedBatch = {
+      ...db.prepare(`
+        SELECT pb.*, m.code AS material_code, m.name AS material_name
+        FROM purchase_batches pb
+        JOIN materials m ON m.id = pb.material_id
+        WHERE pb.id=?
+      `).get(exchangeInBatch.id),
+      allocations: exchangeAllocations
+    }
+    logAudit('退换货', '换货入库直发工厂', 'purchase_batch', exchangeInBatch.id, cleanText(exchangeInBatch.batch_no), exchangeInBatch, savedBatch, `退换货单 ${orderNo}，直接补回工厂【${factoryName}】`)
+  }
+
+  const inLine = {
+    order_id: Number(orderId),
+    in_batch_id: Number(exchangeInBatch.id || 0),
+    source_purchase_batch_id: Number(sourceBatch.id || 0),
+    destination,
+    factory_name: factoryName,
+    warehouse_name: warehouseName,
+    material_id: Number(savedBatch.material_id || materialId),
+    material_code: cleanText(savedBatch.material_code || targetMaterial.code),
+    material_name: cleanText(savedBatch.material_name || targetMaterial.name),
+    color: cleanText(savedBatch.color),
+    size: cleanText(savedBatch.size),
+    qty: inQty,
+    unit: normalizeUnit(savedBatch.unit || inUnit)
+  }
+  db.prepare(`
+    INSERT INTO after_sale_in_lines (
+      order_id,
+      in_batch_id,
+      source_purchase_batch_id,
+      destination,
+      factory_name,
+      warehouse_name,
+      material_id,
+      material_code,
+      material_name,
+      color,
+      size,
+      qty,
+      unit
+    ) VALUES (
+      @order_id,
+      @in_batch_id,
+      @source_purchase_batch_id,
+      @destination,
+      @factory_name,
+      @warehouse_name,
+      @material_id,
+      @material_code,
+      @material_name,
+      @color,
+      @size,
+      @qty,
+      @unit
+    )
+  `).run(inLine)
+  return {
+    batch: savedBatch,
+    in_line: inLine
+  }
+}
+
+function summarizeAfterSaleLines(lines = []) {
+  return (Array.isArray(lines) ? lines : [])
+    .map((item) => {
+      const material = cleanText(item.material_code || item.material_name)
+      const color = cleanText(item.color)
+      const size = cleanText(item.size)
+      const attrs = [color, size].filter(Boolean).join(' / ')
+      return `${material}${attrs ? ` / ${attrs}` : ''} ${formatServerQtyWithUnit(item.qty, item.unit)}`
+    })
+    .join('、')
+}
+
+
 function repairLegacyExchangeInBatches() {
   if (workspaceReadOnly) return 0
   const hasExchangeInColumns = ['in_batch_id', 'in_batch_no', 'in_qty', 'in_unit', 'in_warehouse_name', 'in_color', 'in_size']
@@ -7759,6 +8181,255 @@ function repairLegacyExchangeInBatches() {
   })
   return tx(rows)
 }
+
+ipcMain.handle('db:createAfterSaleOrder', (_event, payload = {}) => {
+  assertWritable('创建退换货单')
+  const sourceType = normalizeAfterSaleSourceType(payload.source_type)
+  const processType = normalizeAfterSaleProcessType(payload.process_type || payload.type)
+  const outLines = (Array.isArray(payload.out_lines) ? payload.out_lines : [])
+    .map((item) => ({
+      ...item,
+      source_type: normalizeAfterSaleSourceType(item?.source_type || sourceType),
+      qty: Number(item?.qty ?? item?.out_qty ?? 0)
+    }))
+    .filter((item) => Number(item.batch_id || item.purchase_batch_id || item.id || 0) && Number(item.qty || 0) > 0)
+  const inLines = processType === 'exchange'
+    ? (Array.isArray(payload.in_lines) ? payload.in_lines : [])
+      .map((item) => ({
+        ...item,
+        qty: Number(item?.qty ?? item?.in_qty ?? 0)
+      }))
+      .filter((item) => Number(item.qty || 0) > 0)
+    : []
+  if (!outLines.length) throw new Error('请至少填写一条问题货换出明细')
+
+  const tx = db.transaction(() => {
+    const orderNo = cleanText(payload.order_no) || nextSerial(afterSaleOrderNoPrefix(), 'after_sale_orders', 'order_no')
+    const status = buildAfterSaleStatus(processType, inLines.length)
+    const orderInfo = db.prepare(`
+      INSERT INTO after_sale_orders (
+        order_no,
+        source_type,
+        process_type,
+        status,
+        supplier,
+        reason,
+        remark
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      orderNo,
+      sourceType,
+      processType,
+      status,
+      cleanText(payload.supplier),
+      cleanText(payload.reason),
+      cleanText(payload.remark)
+    )
+    const orderId = normalizeInsertId(orderInfo.lastInsertRowid)
+    const outResults = outLines.map((entry) => applyAfterSaleOutLine(orderId, orderNo, entry))
+    const fallbackSourceBatch = outResults[0]?.before || null
+    const inResults = inLines.map((entry) => createAfterSaleInboundLine(orderId, orderNo, entry, fallbackSourceBatch)).filter(Boolean)
+    const order = getAfterSaleOrder(orderId)
+    logAudit('退换货', processType === 'return' ? '创建退货单' : '创建换货单', 'after_sale_order', orderId, orderNo, null, order, [
+      summarizeAfterSaleLines(order.out_lines),
+      inResults.length ? `换入：${summarizeAfterSaleLines(order.in_lines)}` : ''
+    ].filter(Boolean).join('；'))
+    return {
+      ...order,
+      total_out_qty: round(outResults.reduce((sum, item) => sum + Number(item.out_line?.qty || 0), 0), 6),
+      total_in_qty: round(inResults.reduce((sum, item) => sum + Number(item.in_line?.qty || 0), 0), 6)
+    }
+  })
+
+  const result = tx()
+  bumpDataRevision()
+  runPostWriteMaintenance().catch(() => {})
+  const outPreview = summarizeAfterSaleLines(result.out_lines)
+  const inPreview = summarizeAfterSaleLines(result.in_lines)
+  const messageText = result.process_type === 'return'
+    ? `退货完成：${outPreview}`
+    : (result.status === 'pending'
+      ? `换货已登记并扣减库存，等待供应商补回：${outPreview}`
+      : `换货完成：换出 ${outPreview}；换入 ${inPreview}`)
+  return { success: true, message: messageText, order: result }
+})
+
+ipcMain.handle('db:completeAfterSaleInbound', (_event, payload = {}) => {
+  assertWritable('补录退换货换入')
+  const orderId = Number(payload.id || payload.order_id || 0)
+  const inLines = (Array.isArray(payload.in_lines) ? payload.in_lines : [])
+    .map((item) => ({ ...item, qty: Number(item?.qty ?? item?.in_qty ?? 0) }))
+    .filter((item) => Number(item.qty || 0) > 0)
+  if (!orderId) throw new Error('请选择要补回的退换货单')
+  if (!inLines.length) throw new Error('请至少填写一条换入明细')
+
+  const tx = db.transaction(() => {
+    const before = getAfterSaleOrder(orderId)
+    if (!before) throw new Error('未找到退换货单')
+    if (before.process_type !== 'exchange') throw new Error('退货退款单不需要补录换入')
+    if (before.status === 'voided') throw new Error('已作废退换货单不能补录')
+    if (before.status === 'completed') throw new Error('该退换货单已完成补回')
+    const fallbackOut = before.out_lines?.[0]
+    const fallbackSourceBatch = fallbackOut?.purchase_batch_id
+      ? db.prepare(`
+        SELECT pb.*, m.code AS material_code, m.name AS material_name
+        FROM purchase_batches pb
+        JOIN materials m ON m.id = pb.material_id
+        WHERE pb.id=?
+      `).get(fallbackOut.purchase_batch_id)
+      : null
+    const inResults = inLines.map((entry) => createAfterSaleInboundLine(orderId, before.order_no, entry, fallbackSourceBatch)).filter(Boolean)
+    db.prepare(`
+      UPDATE after_sale_orders
+      SET status='completed',
+          updated_at=CURRENT_TIMESTAMP
+      WHERE id=?
+    `).run(orderId)
+    const after = getAfterSaleOrder(orderId)
+    logAudit('退换货', '补录换货入库', 'after_sale_order', orderId, before.order_no, before, after, summarizeAfterSaleLines(after.in_lines))
+    return {
+      ...after,
+      total_in_qty: round(inResults.reduce((sum, item) => sum + Number(item.in_line?.qty || 0), 0), 6)
+    }
+  })
+
+  const result = tx()
+  bumpDataRevision()
+  runPostWriteMaintenance().catch(() => {})
+  return { success: true, message: `换货补回完成：${summarizeAfterSaleLines(result.in_lines)}`, order: result }
+})
+
+ipcMain.handle('db:voidAfterSaleOrder', (_event, payload = {}) => {
+  assertWritable('作废退换货单')
+  const orderId = Number(payload.id || payload.order_id || 0)
+  const remark = cleanText(payload.remark)
+  if (!orderId) throw new Error('请选择要作废的退换货单')
+
+  const tx = db.transaction(() => {
+    const before = getAfterSaleOrder(orderId)
+    if (!before) throw new Error('未找到退换货单')
+    if (before.status === 'voided') return before
+    if ((before.in_lines || []).length) {
+      throw new Error('该退换货单已生成换入批次，不能直接作废；请通过核实库存或新增修正批次处理')
+    }
+    const selectBatch = db.prepare(`
+      SELECT pb.*, m.code AS material_code, m.name AS material_name
+      FROM purchase_batches pb
+      JOIN materials m ON m.id = pb.material_id
+      WHERE pb.id=?
+    `)
+    before.out_lines.forEach((line) => {
+      const batch = selectBatch.get(line.purchase_batch_id)
+      if (!batch) return
+      const nextRemainingQty = round(Number(batch.remaining_qty || 0) + Number(line.qty || 0), 6)
+      if (line.source_type === 'factory') {
+        const allocations = getPurchaseBatchAllocations(line.purchase_batch_id)
+        const nextAllocations = mergePurchaseBatchAllocationRows([
+          ...allocations,
+          {
+            factory_name: line.factory_name,
+            allocated_qty: Number(line.qty || 0),
+            allocated_roll_count: 0
+          }
+        ])
+        const savedAllocations = replacePurchaseBatchAllocations(line.purchase_batch_id, nextAllocations)
+        const nextFactoryName = savedAllocations.map((item) => cleanText(item.factory_name)).filter(Boolean).join('、')
+        const nextFactoryAllocatedQty = round(savedAllocations.reduce((sum, item) => sum + Number(item.allocated_qty || 0), 0), 6)
+        db.prepare(`
+          UPDATE purchase_batches
+          SET remaining_qty=?,
+              factory_name=?,
+              factory_allocated_qty=?,
+              updated_at=CURRENT_TIMESTAMP
+          WHERE id=?
+        `).run(nextRemainingQty, nextFactoryName, nextFactoryAllocatedQty, line.purchase_batch_id)
+      } else {
+        db.prepare(`
+          UPDATE purchase_batches
+          SET remaining_qty=?,
+              updated_at=CURRENT_TIMESTAMP
+          WHERE id=?
+        `).run(nextRemainingQty, line.purchase_batch_id)
+      }
+      logInventoryMovement({
+        movement_type: '作废退换货-回补',
+        direction: 'in',
+        material_id: batch.material_id,
+        batch_id: batch.id,
+        material_code: batch.material_code,
+        material_name: batch.material_name,
+        color: batch.color,
+        qty: line.qty,
+        unit: line.unit,
+        balance_after: nextRemainingQty,
+        source_table: 'after_sale_orders',
+        source_id: before.id,
+        source_no: before.order_no,
+        document_status: batch.document_status,
+        remark: remark || '作废待补回退换货单，回补原库存'
+      })
+    })
+    db.prepare(`
+      UPDATE after_sale_orders
+      SET status='voided',
+          remark=CASE WHEN TRIM(COALESCE(remark, ''))='' THEN ? ELSE remark || '；' || ? END,
+          updated_at=CURRENT_TIMESTAMP
+      WHERE id=?
+    `).run(remark, remark, orderId)
+    const after = getAfterSaleOrder(orderId)
+    logAudit('退换货', '作废退换货单', 'after_sale_order', orderId, before.order_no, before, after, remark)
+    return after
+  })
+
+  const result = tx()
+  bumpDataRevision()
+  runPostWriteMaintenance().catch(() => {})
+  return { success: true, message: `退换货单 ${result.order_no} 已作废并回补原库存`, order: result }
+})
+
+ipcMain.handle('db:getAfterSaleOrders', (_event, payload = {}) => {
+  const status = cleanText(payload.status)
+  const keyword = cleanText(payload.keyword).toLowerCase()
+  const sourceType = cleanText(payload.source_type)
+  const where = []
+  const params = []
+  if (status) {
+    where.push('LOWER(TRIM(COALESCE(o.status, \'\'))) = ?')
+    params.push(status.toLowerCase())
+  }
+  if (sourceType) {
+    where.push('LOWER(TRIM(COALESCE(o.source_type, \'\'))) = ?')
+    params.push(sourceType.toLowerCase())
+  }
+  if (keyword) {
+    where.push(`(
+      LOWER(COALESCE(o.order_no, '')) LIKE ?
+      OR LOWER(COALESCE(o.supplier, '')) LIKE ?
+      OR LOWER(COALESCE(o.reason, '')) LIKE ?
+      OR LOWER(COALESCE(o.remark, '')) LIKE ?
+      OR EXISTS (
+        SELECT 1 FROM after_sale_out_lines l
+        WHERE l.order_id=o.id
+          AND (
+            LOWER(COALESCE(l.material_code, '')) LIKE ?
+            OR LOWER(COALESCE(l.material_name, '')) LIKE ?
+            OR LOWER(COALESCE(l.color, '')) LIKE ?
+            OR LOWER(COALESCE(l.size, '')) LIKE ?
+          )
+      )
+    )`)
+    const like = `%${keyword}%`
+    params.push(like, like, like, like, like, like, like, like)
+  }
+  const rows = db.prepare(`
+    SELECT o.*
+    FROM after_sale_orders o
+    ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+    ORDER BY datetime(o.created_at) DESC, o.id DESC
+    LIMIT 500
+  `).all(...params)
+  return rows.map((row) => getAfterSaleOrder(row.id))
+})
 
 ipcMain.handle('db:processPurchaseBatchAfterSale', (_event, payload = {}) => {
   assertWritable('处理采购退回/换货')
@@ -8487,6 +9158,11 @@ function getPurchaseBatches(params = {}) {
       pb.*,
       COALESCE(after_sale_out.out_qty, 0) AS after_sale_out_qty,
       COALESCE(after_sale_in.ref_count, 0) AS after_sale_in_ref_count,
+      COALESCE(after_sale_order_out.ref_count, 0) AS after_sale_order_ref_count,
+      COALESCE(after_sale_order_out.order_nos, '') AS after_sale_order_nos,
+      COALESCE(after_sale_order_out.statuses, '') AS after_sale_order_statuses,
+      COALESCE(after_sale_order_in.ref_count, 0) AS after_sale_in_order_ref_count,
+      COALESCE(after_sale_order_in.order_nos, '') AS after_sale_in_order_nos,
       parent.batch_no AS parent_batch_no,
       m.code AS material_code,
       m.name AS material_name,
@@ -8519,6 +9195,26 @@ function getPurchaseBatches(params = {}) {
       WHERE COALESCE(in_batch_id, 0) > 0
       GROUP BY in_batch_id
     ) after_sale_in ON after_sale_in.in_batch_id = pb.id
+    LEFT JOIN (
+      SELECT
+        l.purchase_batch_id,
+        COUNT(*) AS ref_count,
+        GROUP_CONCAT(DISTINCT o.order_no) AS order_nos,
+        GROUP_CONCAT(DISTINCT o.status) AS statuses
+      FROM after_sale_out_lines l
+      JOIN after_sale_orders o ON o.id = l.order_id
+      GROUP BY l.purchase_batch_id
+    ) after_sale_order_out ON after_sale_order_out.purchase_batch_id = pb.id
+    LEFT JOIN (
+      SELECT
+        l.in_batch_id,
+        COUNT(*) AS ref_count,
+        GROUP_CONCAT(DISTINCT o.order_no) AS order_nos
+      FROM after_sale_in_lines l
+      JOIN after_sale_orders o ON o.id = l.order_id
+      WHERE COALESCE(l.in_batch_id, 0) > 0
+      GROUP BY l.in_batch_id
+    ) after_sale_order_in ON after_sale_order_in.in_batch_id = pb.id
     ${whereSql}
     ORDER BY datetime(pb.created_at) DESC, pb.id DESC
     LIMIT ${limit}
@@ -9738,7 +10434,19 @@ ipcMain.handle('db:deletePurchaseBatch', (e, id) => {
       WHERE purchase_batch_id=?
          OR in_batch_id=?
     `).get(batchId, batchId).c
-    if (afterSaleRefs) {
+    const afterSaleOrderRefs = db.prepare(`
+      SELECT
+        (
+          SELECT COUNT(*)
+          FROM after_sale_out_lines
+          WHERE purchase_batch_id=?
+        ) + (
+          SELECT COUNT(*)
+          FROM after_sale_in_lines
+          WHERE in_batch_id=? OR source_purchase_batch_id=?
+        ) AS c
+    `).get(batchId, batchId, batchId).c
+    if (afterSaleRefs || afterSaleOrderRefs) {
       throw new Error('该采购批次已有供应商退回/换货记录，不能直接删除；如需调整请通过供应商换货、核实库存或新增修正批次处理')
     }
 

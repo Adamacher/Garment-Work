@@ -567,11 +567,24 @@
         <div class="table-primary">采购单号：{{ afterSaleRecord.purchase_order_no || afterSaleRecord.batch_no || '-' }}</div>
         <div class="table-secondary">
           供应商：{{ afterSaleRecord.supplier || '-' }}。
-          <template v-if="afterSaleType === 'exchange'">换出会校验仓库可操作数量，换入会生成新的换货入库批次。</template>
+          <template v-if="afterSaleType === 'exchange'">先登记问题货换出，再登记供应商补回；补回可换颜色、尺码和数量。</template>
           <template v-else>仅支持退回已审核且当前仍在仓库中的数量。</template>
         </div>
       </div>
-      <div v-for="line in afterSaleLines" :key="line.id" class="bom-row" style="margin-bottom: 12px;">
+      <a-alert
+        v-if="afterSaleType === 'exchange'"
+        type="info"
+        show-icon
+        style="margin-bottom: 12px;"
+        message="换货会立即扣减问题货库存；如暂未收到补货，可只填换出数量，系统会生成待补回退换货单。"
+      />
+      <div class="section-caption">
+        <div>
+          <div class="section-caption__title">1. 问题货换出</div>
+          <div class="section-caption__desc">只显示仍在仓库中的可操作数量；已发工厂的质量问题请到出仓入仓执行工厂退换。</div>
+        </div>
+      </div>
+      <div v-for="line in afterSaleLines" :key="line.id" class="bom-row after-sale-row" style="margin-bottom: 12px;">
         <div class="sortable-row__bar">
           <span class="sortable-row__title">
             {{ line.material_label }}
@@ -580,12 +593,12 @@
           </span>
         </div>
         <a-row :gutter="10" class="plan-editor-row">
-          <a-col :span="afterSaleType === 'exchange' ? 5 : 6">
+          <a-col :span="6">
             <a-form-item label="仓库可操作数量">
               <a-input :value="`${formatQty(line.available_qty)} ${normalizeUnit(line.unit)}`" readonly />
             </a-form-item>
           </a-col>
-          <a-col :span="afterSaleType === 'exchange' ? 3 : 5">
+          <a-col :span="5">
             <a-form-item :label="afterSaleType === 'exchange' ? '换出数量' : '退回数量'">
               <a-input-number
                 v-if="afterSaleType === 'exchange'"
@@ -595,28 +608,18 @@
                 :max="Number(line.available_qty || 0)"
                 :step="0.0001"
               />
-              <a-input-number v-else v-model:value="line.qty" style="width: 100%" :min="0" :max="Number(line.available_qty || 0)" :step="0.0001" />
-            </a-form-item>
-          </a-col>
-          <a-col v-if="afterSaleType === 'exchange'" :span="3">
-            <a-form-item label="换入数量">
-              <a-input-number v-model:value="line.in_qty" style="width: 100%" :min="0" :step="0.0001" />
-            </a-form-item>
-          </a-col>
-          <a-col v-if="afterSaleType === 'exchange'" :span="3">
-            <a-form-item label="换入尺码">
-              <a-select
-                v-model:value="line.in_size"
-                allow-clear
-                show-search
-                placeholder="尺码"
-                :options="getExchangeSizeOptions(line)"
-                :filter-option="filterSelectOption"
+              <a-input-number
+                v-else
+                v-model:value="line.qty"
+                style="width: 100%"
+                :min="0"
+                :max="Number(line.available_qty || 0)"
+                :step="0.0001"
               />
             </a-form-item>
           </a-col>
-          <a-col :span="afterSaleType === 'exchange' ? 4 : 5">
-            <a-form-item :label="afterSaleType === 'exchange' ? '入库仓库' : '对应仓库'">
+          <a-col :span="5">
+            <a-form-item label="对应仓库">
               <a-select
                 v-model:value="line.warehouse_name"
                 allow-clear
@@ -624,20 +627,107 @@
                 placeholder="选择仓库"
                 :options="warehouseSelectOptions"
                 :filter-option="filterSelectOption"
+                :get-popup-container="getPopupContainer"
               />
             </a-form-item>
           </a-col>
-          <a-col :span="afterSaleType === 'exchange' ? 3 : 4">
+          <a-col :span="4">
             <a-form-item label="原因">
-              <a-input v-model:value="line.reason" :placeholder="afterSaleType === 'exchange' ? '如色差/换码' : '如退货/质量问题'" />
+              <a-input v-model:value="line.reason" placeholder="质量/换码" />
             </a-form-item>
           </a-col>
-          <a-col :span="afterSaleType === 'exchange' ? 3 : 4">
+          <a-col :span="4">
             <a-form-item label="备注">
               <a-input v-model:value="line.remark" placeholder="补充说明" />
             </a-form-item>
           </a-col>
         </a-row>
+      </div>
+
+      <template v-if="afterSaleType === 'exchange'">
+        <a-divider />
+        <div class="section-caption">
+          <div>
+            <div class="section-caption__title">2. 供应商补回</div>
+            <div class="section-caption__desc">可把多条问题货合并换成另一种颜色/尺码，例如 M、L 统一换成 S。</div>
+          </div>
+          <a-space>
+            <a-button size="small" @click="addAfterSaleInLine()">新增补回明细</a-button>
+            <a-button size="small" @click="seedAfterSaleInLineFromOut">按换出生成</a-button>
+          </a-space>
+        </div>
+        <a-empty v-if="!afterSaleInLines.length" description="暂不填写补回明细时，将生成“待供应商补回”的退换货单。" />
+        <div v-for="line in afterSaleInLines" :key="line.localKey" class="bom-row after-sale-row" style="margin-bottom: 12px;">
+          <div class="sortable-row__bar">
+            <span class="sortable-row__title">补回明细</span>
+            <a-button size="small" danger @click="removeAfterSaleInLine(line.localKey)">删除</a-button>
+          </div>
+          <a-row :gutter="10" class="plan-editor-row">
+            <a-col :span="6">
+              <a-form-item label="换入原料">
+                <a-select
+                  v-model:value="line.material_id"
+                  show-search
+                  option-filter-prop="label"
+                  :options="allMaterialOptions"
+                  :filter-option="filterSelectOption"
+                  :get-popup-container="getPopupContainer"
+                  @change="() => handleAfterSaleInMaterialChange(line)"
+                />
+              </a-form-item>
+            </a-col>
+            <a-col :span="4">
+              <a-form-item label="换入颜色">
+                <a-select
+                  v-model:value="line.color"
+                  allow-clear
+                  show-search
+                  placeholder="颜色"
+                  :options="getColorOptions(line.material_id)"
+                  :filter-option="filterSelectOption"
+                  :get-popup-container="getPopupContainer"
+                />
+              </a-form-item>
+            </a-col>
+            <a-col :span="4">
+              <a-form-item label="换入尺码">
+                <a-auto-complete
+                  v-model:value="line.size"
+                  placeholder="尺码"
+                  :options="getAfterSaleInSizeOptions(line)"
+                  :filter-option="filterSelectOption"
+                  :get-popup-container="getPopupContainer"
+                />
+              </a-form-item>
+            </a-col>
+            <a-col :span="4">
+              <a-form-item label="换入数量">
+                <a-input-number v-model:value="line.qty" style="width: 100%" :min="0" :step="0.0001" />
+              </a-form-item>
+            </a-col>
+            <a-col :span="3">
+              <a-form-item label="单位">
+                <a-select
+                  v-model:value="line.unit"
+                  :options="unitOptions"
+                  :get-popup-container="getPopupContainer"
+                />
+              </a-form-item>
+            </a-col>
+            <a-col :span="3">
+              <a-form-item label="入库仓库">
+                <a-select
+                  v-model:value="line.warehouse_name"
+                  :options="warehouseSelectOptions"
+                  :get-popup-container="getPopupContainer"
+                />
+              </a-form-item>
+            </a-col>
+          </a-row>
+        </div>
+      </template>
+      <div class="formula-box after-sale-preview">
+        {{ afterSalePreviewText }}
       </div>
     </a-modal>
 
@@ -662,6 +752,12 @@
         </div>
         <div>工厂余量：{{ formatQty(detailRecord.factory_remaining_qty || 0) }} {{ normalizeUnit(detailRecord.unit) }}</div>
         <div>仓库余量：{{ formatQty(detailRecord.warehouse_remaining_qty || detailRecord.remaining_qty || 0) }} {{ normalizeUnit(detailRecord.unit) }}</div>
+        <div v-if="detailRecord.after_sale_order_nos" class="table-secondary">
+          退换货单：{{ detailRecord.after_sale_order_nos }}（{{ formatAfterSaleStatuses(detailRecord.after_sale_order_statuses) }}）
+        </div>
+        <div v-if="detailRecord.after_sale_in_order_nos" class="table-secondary">
+          来源换入单：{{ detailRecord.after_sale_in_order_nos }}
+        </div>
         <div>单价类型：{{ priceTypeLabel(detailRecord.price_type) }}</div>
         <div>录入单价：{{ formatMoney(detailRecord.price, 4) }} / {{ normalizeUnit(detailRecord.price_unit || detailRecord.unit) }}</div>
         <div>到货日期：{{ detailRecord.received_at || '-' }}</div>
@@ -789,6 +885,7 @@ const auditTargetIds = ref([])
 const detailRecord = ref(null)
 const afterSaleRecord = ref(null)
 const afterSaleLines = ref([])
+const afterSaleInLines = ref([])
 const afterSaleType = ref('return')
 const currentMergeGroupId = ref('')
 const currentMergeSnapshotJson = ref('')
@@ -899,6 +996,12 @@ const materialOptions = computed(() => {
     : materials.value
   return source.map((item) => ({ label: formatMaterialLabel(item), value: item.id }))
 })
+const allMaterialOptions = computed(() => materials.value.map((item) => ({ label: formatMaterialLabel(item), value: item.id })))
+const unitOptions = computed(() =>
+  [...new Set(['米', '码', '公斤', '斤', '个', '条', '对', ...(optionLists.value.units || [])]
+    .map((item) => normalizeUnit(item)).filter(Boolean))]
+    .map((item) => ({ label: item, value: item }))
+)
 const supplierFilterOptions = computed(() =>
   [...new Set(list.value.map((item) => String(item.supplier || '').trim()).filter(Boolean))]
     .map((item) => ({ label: item, value: item }))
@@ -927,6 +1030,25 @@ const filterPlaceholder = computed(() => {
     remark: '搜索备注'
   }
   return map[filterField.value] || '搜索'
+})
+
+const afterSalePreviewText = computed(() => {
+  const outLines = afterSaleLines.value
+    .map((line) => ({
+      ...line,
+      qty: afterSaleType.value === 'exchange' ? Number(line.out_qty || 0) : Number(line.qty || 0)
+    }))
+    .filter((line) => Number(line.qty || 0) > 0)
+  const outText = outLines.map((line) => `${line.material_label}${line.color ? ` / ${line.color}` : ''}${line.size ? ` / ${line.size}` : ''} 换出 ${formatQty(line.qty)} ${normalizeUnit(line.unit)}`).join('；')
+  if (afterSaleType.value !== 'exchange') return outText ? `影响预览：${outText}。确认后会立即扣减仓库可用库存。` : '影响预览：请填写退回数量。'
+  const inLines = afterSaleInLines.value.filter((line) => Number(line.qty || 0) > 0)
+  const inText = inLines.map((line) => {
+    const material = materials.value.find((item) => Number(item.id) === Number(line.material_id))
+    return `${formatMaterialLabel(material || {})}${line.color ? ` / ${line.color}` : ''}${line.size ? ` / ${line.size}` : ''} 换入 ${formatQty(line.qty)} ${normalizeUnit(line.unit)}`
+  }).join('；')
+  if (!outText) return '影响预览：请先填写问题货换出数量。'
+  if (!inText) return `影响预览：${outText}。确认后先扣减库存，并生成“待供应商补回”的退换货单。`
+  return `影响预览：${outText}；${inText}。确认后会扣减问题货，并创建新的换货入库批次。`
 })
 
 function normalizeFilterText(value) {
@@ -1288,6 +1410,17 @@ function documentStatusLabel(value) {
   if (value === 'approved') return '已审核'
   if (value === 'voided') return '已作废'
   return '草稿'
+}
+
+function formatAfterSaleStatuses(value) {
+  const labels = {
+    pending: '待供应商补回',
+    completed: '已换入',
+    returned: '退货完成',
+    voided: '已作废'
+  }
+  const parts = String(value || '').split(',').map((item) => item.trim()).filter(Boolean)
+  return parts.length ? parts.map((item) => labels[item] || item).join('、') : '-'
 }
 
 function getPurchaseRowClassName(record) {
@@ -1926,6 +2059,76 @@ function getExchangeSizeOptions(line) {
     .map((item) => ({ label: item, value: item }))
 }
 
+function createAfterSaleInLine(seed = {}) {
+  const material = materials.value.find((item) => Number(item.id) === Number(seed.material_id)) || {}
+  const defaultUnit = normalizeUnit(seed.unit || material.unit || '米')
+  return {
+    localKey: `${Date.now()}-${Math.random()}`,
+    source_batch_id: Number(seed.source_batch_id || seed.id || 0),
+    material_id: Number(seed.material_id || material.id || 0) || undefined,
+    color: String(seed.color || '').trim(),
+    size: String(seed.size || '').trim(),
+    qty: Number(seed.qty || 0),
+    unit: defaultUnit,
+    warehouse_name: String(seed.warehouse_name || '主仓库').trim() || '主仓库'
+  }
+}
+
+function addAfterSaleInLine(seed = {}) {
+  const firstOut = afterSaleLines.value.find((line) => Number(line.out_qty || 0) > 0) || afterSaleLines.value[0] || {}
+  afterSaleInLines.value.push(createAfterSaleInLine({
+    source_batch_id: firstOut.id,
+    material_id: firstOut.material_id,
+    color: firstOut.color,
+    size: firstOut.size,
+    unit: firstOut.unit,
+    warehouse_name: firstOut.warehouse_name,
+    ...seed
+  }))
+}
+
+function seedAfterSaleInLineFromOut() {
+  const rows = afterSaleLines.value.filter((line) => Number(line.out_qty || 0) > 0)
+  if (!rows.length) {
+    message.warning('请先填写需要换出的数量')
+    return
+  }
+  afterSaleInLines.value = rows.map((line) => createAfterSaleInLine({
+    source_batch_id: line.id,
+    material_id: line.material_id,
+    color: line.color,
+    size: line.size,
+    qty: Number(line.out_qty || 0),
+    unit: line.unit,
+    warehouse_name: line.warehouse_name
+  }))
+}
+
+function removeAfterSaleInLine(localKey) {
+  afterSaleInLines.value = afterSaleInLines.value.filter((line) => line.localKey !== localKey)
+}
+
+function handleAfterSaleInMaterialChange(line) {
+  const material = materials.value.find((item) => Number(item.id) === Number(line.material_id))
+  if (!material) return
+  line.unit = normalizeUnit(material.unit || line.unit || '米')
+  const colorOptions = getColorOptions(material.id).map((item) => item.value)
+  if (colorOptions.length && !colorOptions.includes(line.color)) line.color = colorOptions[0]
+  const sizeOptions = getSizeOptions(material.id, line.size).map((item) => item.value)
+  if (sizeOptions.length && !sizeOptions.includes(line.size)) line.size = sizeOptions[0]
+}
+
+function getAfterSaleInSizeOptions(line) {
+  const materialId = Number(line?.material_id || 0)
+  const fromMaterial = getSizeOptions(materialId, line?.size).map((item) => item.value)
+  const fromPurchaseRows = afterSaleLines.value
+    .filter((item) => Number(item.material_id || 0) === materialId)
+    .map((item) => String(item.size || '').trim())
+    .filter(Boolean)
+  return [...new Set([...fromMaterial, ...fromPurchaseRows, String(line?.size || '').trim()].filter(Boolean))]
+    .map((item) => ({ label: item, value: item }))
+}
+
 function getAuditAllocationActualQty(line, allocation) {
   const totalRollCount = Number(line.roll_count || 0)
   const allocatedRollCount = Number(allocation?.roll_count || 0)
@@ -2075,42 +2278,59 @@ function openAfterSaleModal(record, type = 'return') {
   afterSaleType.value = type === 'exchange' ? 'exchange' : 'return'
   afterSaleRecord.value = record
   afterSaleLines.value = rows.map((row) => buildAfterSaleLine(row))
+  afterSaleInLines.value = []
   afterSaleVisible.value = true
 }
 
 async function confirmAfterSale() {
-  const linesPayload = afterSaleLines.value
+  const outLinesPayload = afterSaleLines.value
     .map((item) => ({
-      id: Number(item.id || 0),
-      qty: Number(item.qty || 0),
-      out_qty: Number(item.out_qty || 0),
-      in_qty: Number(item.in_qty || 0),
+      batch_id: Number(item.id || 0),
+      source_type: 'warehouse',
+      qty: afterSaleType.value === 'exchange' ? Number(item.out_qty || 0) : Number(item.qty || 0),
       warehouse_name: item.warehouse_name || '主仓库',
-      in_warehouse_name: item.warehouse_name || '主仓库',
-      in_color: item.in_color || item.color || '',
-      in_size: item.in_size || item.size || '',
       reason: item.reason || '',
       remark: item.remark || ''
     }))
-    .filter((item) => item.id && (afterSaleType.value === 'exchange'
-      ? (item.out_qty > 0 || item.in_qty > 0)
-      : item.qty > 0))
+    .filter((item) => item.batch_id && item.qty > 0)
 
-  if (!linesPayload.length) {
+  const firstOutBatchId = outLinesPayload[0]?.batch_id || afterSaleLines.value[0]?.id || 0
+  const inLinesPayload = afterSaleType.value === 'exchange'
+    ? afterSaleInLines.value
+      .map((item) => ({
+        source_batch_id: Number(item.source_batch_id || firstOutBatchId || 0),
+        destination: 'warehouse',
+        material_id: Number(item.material_id || 0),
+        color: item.color || '',
+        size: item.size || '',
+        qty: Number(item.qty || 0),
+        unit: item.unit || '',
+        warehouse_name: item.warehouse_name || '主仓库'
+      }))
+      .filter((item) => item.source_batch_id && item.material_id && item.qty > 0)
+    : []
+
+  if (!outLinesPayload.length) {
     message.error(`请至少填写一条${afterSaleType.value === 'exchange' ? '换货' : '退回'}明细`)
     return
   }
 
   afterSaleSaving.value = true
   try {
-    const result = await api.db.processPurchaseBatchAfterSale(JSON.parse(JSON.stringify({
-      type: afterSaleType.value,
-      lines: linesPayload
+    const result = await api.db.createAfterSaleOrder(JSON.parse(JSON.stringify({
+      source_type: 'warehouse',
+      process_type: afterSaleType.value,
+      supplier: afterSaleRecord.value?.supplier || '',
+      reason: outLinesPayload.map((item) => item.reason).filter(Boolean).join('；'),
+      remark: outLinesPayload.map((item) => item.remark).filter(Boolean).join('；'),
+      out_lines: outLinesPayload,
+      in_lines: inLinesPayload
     })))
     message.success(result?.message || (afterSaleType.value === 'exchange' ? '供应商换货已完成' : '退回供应商已登记'))
     afterSaleVisible.value = false
     afterSaleRecord.value = null
     afterSaleLines.value = []
+    afterSaleInLines.value = []
     scheduleListReload()
   } catch (error) {
     message.error(error?.message || '处理采购退回/换货失败')

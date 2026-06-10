@@ -420,7 +420,7 @@
         <div class="table-stack table-stack--tight" style="margin-bottom: 12px;">
           <div class="table-primary">{{ factoryExchangeBatch.batch_no || '-' }} / {{ factoryExchangeBatch.material_code || '-' }}</div>
           <div class="table-secondary">
-            已发到工厂的原料出现质量问题时，在这里直接退供应商换货；系统会扣减对应工厂余量，并生成新的换货入库批次。
+            已发到工厂的原料出现质量问题时，在这里登记退供应商；问题货会立即扣减工厂余量，供应商补回后生成新的换货入库批次。
           </div>
         </div>
         <a-row :gutter="12">
@@ -468,6 +468,7 @@
                   style="width: 100%"
                   :min="0"
                   :step="0.0001"
+                  placeholder="未补回可先填 0"
                 />
               </a-form-item>
             </a-col>
@@ -523,7 +524,7 @@
           </a-form-item>
         </a-form>
         <div class="formula-box">
-          换出会扣减所选工厂的实际剩余；换入会生成新的供应商换货批次，可入主仓库，也可直接补回该工厂。
+          换出会扣减所选工厂的实际剩余；换入数量大于 0 时会生成新的供应商换货批次，可入主仓库，也可直接补回该工厂。
         </div>
       </div>
     </a-modal>
@@ -1245,23 +1246,33 @@ async function saveFactoryExchange() {
     message.error(`问题数量不能大于当前工厂可退数量，最多 ${formatQtyWithUnit(maxQty, factoryExchangeBatch.value.unit)}`)
     return
   }
-  if (inQty <= 0) {
-    message.error('请填写换入数量')
-    return
-  }
   factoryExchangeSaving.value = true
   try {
-    const result = await api.db.processFactorySupplierExchange({
-      batch_id: Number(factoryExchangeBatch.value.id),
-      factory_name: factoryExchangeForm.factory_name,
-      out_qty: outQty,
-      in_qty: inQty,
-      in_color: factoryExchangeForm.in_color || factoryExchangeBatch.value.color || '',
-      in_size: factoryExchangeForm.in_size || factoryExchangeBatch.value.size || '',
-      in_destination: factoryExchangeForm.in_destination,
-      warehouse_name: factoryExchangeForm.warehouse_name || '主仓库',
+    const inLines = inQty > 0 ? [{
+      source_batch_id: Number(factoryExchangeBatch.value.id),
+      destination: factoryExchangeForm.in_destination,
+      factory_name: factoryExchangeForm.in_destination === 'factory' ? factoryExchangeForm.factory_name : '',
+      material_id: Number(factoryExchangeBatch.value.material_id || 0),
+      color: factoryExchangeForm.in_color || factoryExchangeBatch.value.color || '',
+      size: factoryExchangeForm.in_size || factoryExchangeBatch.value.size || '',
+      qty: inQty,
+      unit: factoryExchangeBatch.value.unit || factoryExchangeBatch.value.actual_input_unit || factoryExchangeBatch.value.purchase_input_unit || '',
+      warehouse_name: factoryExchangeForm.warehouse_name || '主仓库'
+    }] : []
+    const result = await api.db.createAfterSaleOrder({
+      source_type: 'factory',
+      process_type: 'exchange',
+      supplier: factoryExchangeBatch.value.supplier || '',
       reason: factoryExchangeForm.reason || '',
-      remark: factoryExchangeForm.remark || ''
+      remark: factoryExchangeForm.remark || '',
+      out_lines: [{
+        batch_id: Number(factoryExchangeBatch.value.id),
+        source_type: 'factory',
+        factory_name: factoryExchangeForm.factory_name,
+        warehouse_name: factoryExchangeForm.warehouse_name || '主仓库',
+        qty: outQty
+      }],
+      in_lines: inLines
     })
     message.success(result?.message || '工厂退供应商换货已完成')
     factoryExchangeVisible.value = false
